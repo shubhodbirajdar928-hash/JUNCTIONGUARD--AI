@@ -225,14 +225,19 @@ with col_map:
     if selected_junction:
         map_center = [selected_junction.lat, selected_junction.lon]
         map_zoom = 14
-    elif filtered_junctions:
-        avg_lat = sum(j.lat for j in filtered_junctions) / len(filtered_junctions)
-        avg_lon = sum(j.lon for j in filtered_junctions) / len(filtered_junctions)
-        map_center = [avg_lat, avg_lon]
-        map_zoom = 12
     else:
-        map_center = [20.5937, 78.9629]
-        map_zoom = 5
+        cities = {j.city for j in filtered_junctions if j.city}
+        if len(cities) > 1:
+            map_center = [20.5937, 78.9629]
+            map_zoom = 5
+        elif filtered_junctions:
+            avg_lat = sum(j.lat for j in filtered_junctions) / len(filtered_junctions)
+            avg_lon = sum(j.lon for j in filtered_junctions) / len(filtered_junctions)
+            map_center = [avg_lat, avg_lon]
+            map_zoom = 11
+        else:
+            map_center = [20.5937, 78.9629]
+            map_zoom = 5
 
     m = folium.Map(
         location=map_center,

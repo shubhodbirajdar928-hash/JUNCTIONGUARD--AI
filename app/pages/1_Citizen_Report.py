@@ -150,10 +150,24 @@ def render_map_picker():
                 else:
                     st.warning("Location not found. Try a nearby landmark or city.")
 
-    default_lat = junctions[0].lat if junctions else 12.9716
-    default_lon = junctions[0].lon if junctions else 77.5946
+    if "sentinel_picked_lat" in st.session_state and "sentinel_picked_lng" in st.session_state:
+        default_lat = float(st.session_state["sentinel_picked_lat"])
+        default_lon = float(st.session_state["sentinel_picked_lng"])
+        default_zoom = 15
+    else:
+        # Check if a junction is selected in the dropdown
+        selected_drop = st.session_state.get("sentinel_select_junction_dropdown")
+        selected_jnc_record = next((j for j in junctions if j.name == selected_drop), None)
+        if selected_jnc_record:
+            default_lat = selected_jnc_record.lat
+            default_lon = selected_jnc_record.lon
+            default_zoom = 14
+        else:
+            default_lat = junctions[0].lat if junctions else 18.5204
+            default_lon = junctions[0].lon if junctions else 73.8567
+            default_zoom = 12
 
-    m_picker = folium.Map(location=[default_lat, default_lon], zoom_start=13, tiles="OpenStreetMap")
+    m_picker = folium.Map(location=[default_lat, default_lon], zoom_start=default_zoom, tiles="OpenStreetMap")
 
     # Anti-flicker CSS injected inside map iframe (Bug 1 Fix)
     map_inner_css = """
@@ -406,11 +420,24 @@ with col_form:
     else:
         idx = 0
 
+    # Callback when user explicitly interacts with the dropdown:
+    def on_sentinel_dropdown_change():
+        sel = st.session_state.get("sentinel_select_junction_dropdown")
+        jnc_dict = {j.name: j for j in junctions}
+        if sel and sel in jnc_dict:
+            sel_jnc = jnc_dict[sel]
+            st.session_state["sentinel_picked_lat"] = sel_jnc.lat
+            st.session_state["sentinel_picked_lng"] = sel_jnc.lon
+            st.session_state["sentinel_jnc_input"] = sel
+        elif sel:
+            st.session_state["sentinel_jnc_input"] = sel
+
     selected_option = st.selectbox(
         "Select Junction / Location ✱",
         options=loc_options,
         index=idx,
-        key="sentinel_select_junction_dropdown"
+        key="sentinel_select_junction_dropdown",
+        on_change=on_sentinel_dropdown_change
     )
 
     if selected_option == "➕ Type Custom Location Manually...":

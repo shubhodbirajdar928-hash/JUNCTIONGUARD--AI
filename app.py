@@ -192,16 +192,23 @@ def render_surveillance_folium_map(base_view_mode: str, height: int = 380, key_p
         map_zoom = 15
     else:
         map_junctions = [j for j in filtered_junctions if j["risk_level"] in risk_filter]
-        pune_jnc = next((j for j in map_junctions if "Pune" in j.get("city", "") or "Shivaji" in j["name"]), None)
-        if pune_jnc:
-            map_center = [18.5204, 73.8567]
-            map_zoom = 11
+        
+        # Check if the map junctions span multiple cities/locations
+        cities = {j.get("city") for j in map_junctions if j.get("city")}
+        if len(cities) > 1:
+            # Multi-city view: Center on India and zoom out so all are visible
+            map_center = [20.5937, 78.9629]
+            map_zoom = 5
         elif map_junctions:
-            map_center = [map_junctions[0]["lat"], map_junctions[0]["lon"]]
+            # Single-city view: Center on the average coordinate of those junctions
+            avg_lat = sum(j["lat"] for j in map_junctions) / len(map_junctions)
+            avg_lon = sum(j["lon"] for j in map_junctions) / len(map_junctions)
+            map_center = [avg_lat, avg_lon]
             map_zoom = 11
         else:
-            map_center = [18.5204, 73.8567]
-            map_zoom = 6
+            # Fallback to India center
+            map_center = [20.5937, 78.9629]
+            map_zoom = 5
 
     m = folium.Map(
         location=map_center,
@@ -912,10 +919,18 @@ elif sidebar_nav == "Citizen Hazard Reporting":
             initial_lon = float(st.session_state["tab_picked_lng"])
             initial_zoom = 15
         else:
-            pune_jnc = next((j for j in all_jnc_list if "Pune" in j.get("city", "") or "Shivaji" in j["name"]), None)
-            initial_lat = pune_jnc['lat'] if pune_jnc else (all_jnc_list[0]['lat'] if all_jnc_list else 18.5204)
-            initial_lon = pune_jnc['lon'] if pune_jnc else (all_jnc_list[0]['lon'] if all_jnc_list else 73.8567)
-            initial_zoom = 12
+            # Check if a junction is selected in the dropdown
+            selected_drop = st.session_state.get("tab_select_junction_dropdown")
+            selected_jnc_record = next((j for j in all_jnc_list if j["name"] == selected_drop), None)
+            if selected_jnc_record:
+                initial_lat = selected_jnc_record["lat"]
+                initial_lon = selected_jnc_record["lon"]
+                initial_zoom = 14
+            else:
+                pune_jnc = next((j for j in all_jnc_list if "Pune" in j.get("city", "")), None)
+                initial_lat = pune_jnc['lat'] if pune_jnc else (all_jnc_list[0]['lat'] if all_jnc_list else 18.5204)
+                initial_lon = pune_jnc['lon'] if pune_jnc else (all_jnc_list[0]['lon'] if all_jnc_list else 73.8567)
+                initial_zoom = 12
 
         m_picker = folium.Map(
             location=[initial_lat, initial_lon],
