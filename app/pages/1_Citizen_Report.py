@@ -549,10 +549,39 @@ if st.session_state.pop("_form_submit_requested", False):
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
 
-        media_type_val = None
-        if uploaded_file is not None:
-            file_ext = os.path.splitext(uploaded_file.name)[1].lower()
-            media_type_val = "video" if file_ext in [".mp4", ".mov", ".avi", ".webm"] else "photo"
+        # If this is a custom junction, register it in SQLite junctions table
+        if final_jnc_id.startswith("J-CUSTOM-") or not selected_j:
+            p_lat = st.session_state.get("sentinel_picked_lat")
+            p_lon = st.session_state.get("sentinel_picked_lng")
+            if p_lat is None or p_lon is None:
+                from src.geo_utils import forward_geocode_location
+                geo_res = forward_geocode_location(final_jnc_name)
+                if geo_res:
+                    p_lat, p_lon, _ = geo_res
+                else:
+                    p_lat, p_lon = 18.5204, 73.8567
+            
+            parts = [p.strip() for p in final_jnc_name.split(",")]
+            city_name = parts[-1] if len(parts) > 1 else "Custom City"
+
+            try:
+                from src.database import get_db_connection
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO junctions 
+                    (junction_id, name, lat, lon, city, state, risk_score, risk_level, contributing_factors, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    final_jnc_id, final_jnc_name, float(p_lat), float(p_lon), city_name, "India",
+                    float(rep_severity * 15.0), "HIGH" if rep_severity >= 4 else ("MEDIUM" if rep_severity >= 3 else "LOW"),
+                    json.dumps([{"factor": "Citizen Hazard Reports", "weight": 1.0}]),
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                ))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                print(f"[Register Custom Junction Note] {e}")
 
         try:
             from src.database import add_citizen_report
