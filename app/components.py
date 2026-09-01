@@ -14,6 +14,83 @@ Implements the Modern CareerVerse AI-Inspired Quantum Glassmorphism Interface:
 import streamlit as st
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+import streamlit.components.v1 as st_components
+
+def scroll_to_top():
+    """Scrolls the browser viewport smoothly to the absolute top of the application."""
+    scroll_js = """
+    <script>
+    function forceScrollToTop() {
+        try {
+            // 1. Scroll anchor into view if found in parent or current document
+            var topAnchor = (window.parent && window.parent.document.getElementById('jg-top-anchor')) ||
+                            window.document.getElementById('jg-top-anchor');
+            if (topAnchor) {
+                topAnchor.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+            }
+
+            // 2. Scroll all potential parent containers to absolute 0
+            if (window.parent) {
+                var doc = window.parent.document;
+                var containers = [
+                    doc.querySelector('[data-testid="stAppViewContainer"]'),
+                    doc.querySelector('.main'),
+                    doc.querySelector('section.main'),
+                    doc.documentElement,
+                    doc.body
+                ];
+                containers.forEach(function(el) {
+                    if (el) {
+                        el.scrollTop = 0;
+                        if (typeof el.scrollTo === 'function') {
+                            el.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+                        }
+                    }
+                });
+                window.parent.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+            }
+            window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+        } catch(e) {
+            console.error('Scroll error:', e);
+        }
+    }
+
+    // Execute immediately and at staggered intervals as Streamlit mounts DOM nodes
+    forceScrollToTop();
+    setTimeout(forceScrollToTop, 50);
+    setTimeout(forceScrollToTop, 150);
+    setTimeout(forceScrollToTop, 300);
+    setTimeout(forceScrollToTop, 600);
+    setTimeout(forceScrollToTop, 1000);
+    </script>
+    """
+    st_components.html(scroll_js, height=0, width=0)
+
+def scroll_to_map_section():
+    """Scrolls smoothly and precisely to the Radar Map & Telemetry centerpiece."""
+    scroll_js = """
+    <script>
+    function forceScrollToMap() {
+        try {
+            var target = (window.parent && window.parent.document.getElementById('jg-radar-map-section')) ||
+                         window.document.getElementById('jg-radar-map-section');
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+            }
+        } catch(e) {
+            console.error('Scroll map error:', e);
+        }
+    }
+
+    forceScrollToMap();
+    setTimeout(forceScrollToMap, 60);
+    setTimeout(forceScrollToMap, 180);
+    setTimeout(forceScrollToMap, 350);
+    setTimeout(forceScrollToMap, 650);
+    setTimeout(forceScrollToMap, 1100);
+    </script>
+    """
+    st_components.html(scroll_js, height=0, width=0)
 
 def get_risk_badge_html(risk_level: Optional[str]) -> str:
     """Returns the HTML string for a colored risk badge."""
@@ -426,6 +503,7 @@ def render_awaiting_data_banner():
 def render_navbar(active_page: str = "Dashboard"):
     """Renders the CareerVerse AI-style floating frosted navbar with status telemetry."""
     navbar_html = (
+        '<div id="jg-top-anchor" style="position:relative; top:-20px; height:1px;"></div>'
         '<div class="tactical-navbar">'
         '<div class="navbar-brand-group">'
         '<div class="brand-shield-logo"></div>'

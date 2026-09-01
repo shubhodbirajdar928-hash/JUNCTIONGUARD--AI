@@ -5,13 +5,14 @@ and 3D Digital Twin Surveillance for Accident-Prone Road Junctions in India.
 """
 
 import os
+import sys
 import json
 import uuid
 import mimetypes
 import cv2
 import streamlit as st
 import folium
-from folium.plugins import HeatMap, MiniMap, Fullscreen, MarkerCluster
+from folium.plugins import HeatMap
 from streamlit_folium import st_folium
 import pandas as pd
 import plotly.express as px
@@ -21,10 +22,18 @@ import time
 from typing import Optional, List, Dict, Any, Union
 import importlib
 
-# ── Backend Data & Analytics Imports (Strictly Untouched) ──
+# Load environment variables from .env if present
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+# ── Backend Data & Analytics Imports ──
 from src.database import (
-    init_db, fetch_all_junctions, fetch_junction_by_id, 
-    add_citizen_report, fetch_citizen_reports
+    init_db, fetch_all_junctions, fetch_junction_by_id,
+    add_citizen_report, fetch_citizen_reports,
+    upsert_custom_junction, fetch_detection_indicators_from_db
 )
 from src.analytics.risk_engine import ExplainableRiskEngine
 import src.geo_utils
@@ -56,7 +65,9 @@ from app.components import (
     render_tactical_kpi_card,
     render_simulation_result_card,
     render_citizen_report_card,
-    render_footer
+    render_footer,
+    scroll_to_top,
+    scroll_to_map_section
 )
 
 # ── Handle Browser GPS Callback (from HTML5 Geolocation Button) ──
@@ -94,8 +105,14 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Inject Modern Clean Interface Design System
+# Inject Modern Interface Design System
 inject_custom_styles()
+
+# Auto-scroll when triggered by focus or navigation buttons
+if st.session_state.pop("_scroll_to_map", None):
+    scroll_to_map_section()
+elif st.session_state.pop("_scroll_to_top", None):
+    scroll_to_top()
 
 # ── Navigation Options (Clean 6-Pillar Suite) ──
 nav_options = [
@@ -169,13 +186,13 @@ with st.sidebar:
     # Junction Selector Dropdown
     junctions_raw = fetch_all_junctions()
     jnc_select_options = ["All Junctions"] + [j["name"] for j in junctions_raw]
-    
+
     if "active_selected_junction" not in st.session_state:
         st.session_state["active_selected_junction"] = "All Junctions"
-        
+
     cur_sel = st.session_state.get("active_selected_junction", "All Junctions")
     sel_idx = jnc_select_options.index(cur_sel) if cur_sel in jnc_select_options else 0
-    
+
     sel_key = f"focus_jnc_picker_{st.session_state.get('active_selected_junction', 'all')}"
     sidebar_selected_jnc = st.selectbox(
         "FOCUS JUNCTION",
@@ -225,6 +242,7 @@ for col, opt in zip(nav_cols, nav_options):
         if st.button(tab_icons[opt], key=f"top_nav_btn_{opt}", use_container_width=True, type=btn_type):
             if sidebar_nav != opt:
                 st.session_state["_pending_nav"] = opt
+                st.session_state["_scroll_to_top"] = True
                 st.rerun()
 
 # Render Subheader Overview Bar
@@ -295,12 +313,20 @@ if sidebar_selected_jnc != "All Junctions":
             break
 
 # ── Helper: Surveillance Folium Map Renderer ──
-def render_surveillance_folium_map(view_mode: str, height: int = 500, key_prefix: str = "main"):
+def render_surveillance_folium_map(
+    view_mode: str,
+    height: int = 500,
+    key_prefix: str = "main",
+    show_buffers: bool = False,
+    buffer_radius_m: int = 500,
+    enable_heatmap: bool = False,
+    heat_radius: int = 28
+):
     display_junctions = [j for j in junctions if j["risk_level"] in risk_filter]
 
     if selected_jnc_record:
         map_center = [selected_jnc_record["lat"], selected_jnc_record["lon"]]
-        map_zoom = 13
+        map_zoom = 14
     elif display_junctions and len(display_junctions) == 1:
         map_center = [display_junctions[0]["lat"], display_junctions[0]["lon"]]
         map_zoom = 13
@@ -403,9 +429,22 @@ def render_surveillance_folium_map(view_mode: str, height: int = 500, key_prefix
             icon=folium.DivIcon(html=pin_html, icon_size=(44, 44), icon_anchor=(22, 22))
         ).add_to(m)
 
-    if view_mode == "Heatmap Mode":
+        # Safety Buffer Circles Overlay
+        if show_buffers or is_selected:
+            folium.Circle(
+                location=[j["lat"], j["lon"]],
+                radius=buffer_radius_m,
+                color=pin_col,
+                fill=True,
+                fill_color=pin_col,
+                fill_opacity=0.15 if is_selected else 0.08,
+                weight=2 if is_selected else 1,
+                tooltip=f"🛡️ {buffer_radius_m}m Safety Buffer ({j['name']})"
+            ).add_to(m)
+
+    if view_mode == "Heatmap Mode" or enable_heatmap:
         heat_data = [[j["lat"], j["lon"], (j["risk_score"] or 10) / 100.0] for j in display_junctions]
-        HeatMap(heat_data, radius=28, blur=18, min_opacity=0.35).add_to(m)
+        HeatMap(heat_data, radius=heat_radius, blur=18, min_opacity=0.35).add_to(m)
 
     map_state = st_folium(
         m,
@@ -434,62 +473,116 @@ if sidebar_nav == "Command Center":
     # Clean Hero Mission Banner
     render_hero_mission_banner()
 
-    # 4 Clean Spacious KPI Metric Cards
+    # Anchor for direct Map & Telemetry viewport alignment
+    st.markdown("<div id='jg-radar-map-section' style='scroll-margin-top: 15px; height: 1px;'></div>", unsafe_allow_html=True)
+
+    # 4 Clean Spacious KPI Metric Cards (Context-aware for focused junction or fleet)
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
-    total_jnc = len(junctions)
-    high_risk_count = sum(1 for j in junctions if j["risk_level"] == "HIGH")
-    avg_risk_score = round(sum(j["risk_score"] for j in junctions if j["risk_score"] is not None) / max(1, total_jnc), 1)
-    total_reports = len(fetch_citizen_reports())
+    if selected_jnc_record:
+        j_score = selected_jnc_record.get("risk_score") or 0.0
+        j_lvl = (selected_jnc_record.get("risk_level") or "LOW").upper()
+        j_reps = len(fetch_citizen_reports(selected_jnc_record.get("junction_id")))
+        
+        with kpi1:
+            st.markdown(render_tactical_kpi_card(
+                label="FOCUS NODE",
+                value=selected_jnc_record["name"][:14] + ("..." if len(selected_jnc_record["name"]) > 14 else ""),
+                subtext=f"📍 {selected_jnc_record['city']}",
+                badge_label="FOCUSED",
+                badge_class="badge-live-cyan",
+                dot_class="live-dot-cyan",
+                icon_class="kpi-icon-jnc"
+            ), unsafe_allow_html=True)
+        with kpi2:
+            st.markdown(render_tactical_kpi_card(
+                label="SEVERITY STATUS",
+                value=j_lvl,
+                subtext="⚡ AI Classified",
+                badge_label="CRITICAL" if j_lvl == "HIGH" else "CALIBRATED",
+                badge_class="badge-live-red" if j_lvl == "HIGH" else "badge-live-amber",
+                dot_class="live-dot-red" if j_lvl == "HIGH" else "live-dot-green",
+                icon_class="kpi-icon-alert",
+                is_critical=(j_lvl == "HIGH"),
+                value_color="#fb7185" if j_lvl == "HIGH" else ("#fbbf24" if j_lvl == "MEDIUM" else "#34d399")
+            ), unsafe_allow_html=True)
+        with kpi3:
+            st.markdown(render_tactical_kpi_card(
+                label="NODE RISK SCORE",
+                value=f"{j_score:.1f}",
+                subtext="📊 Composite Vector",
+                badge_label="AUDITED",
+                badge_class="badge-live-amber",
+                dot_class="live-dot-green",
+                icon_class="kpi-icon-score",
+                denom="/100",
+                value_color="#fbbf24"
+            ), unsafe_allow_html=True)
+        with kpi4:
+            st.markdown(render_tactical_kpi_card(
+                label="CITIZEN LOGS",
+                value=j_reps,
+                subtext="🛡️ Verified Field Reports",
+                badge_label="NODE FEED",
+                badge_class="badge-live-green",
+                dot_class="live-dot-green",
+                icon_class="kpi-icon-reports",
+                value_color="#34d399"
+            ), unsafe_allow_html=True)
+    else:
+        total_jnc = len(junctions)
+        high_risk_count = sum(1 for j in junctions if j["risk_level"] == "HIGH")
+        avg_risk_score = round(sum(j["risk_score"] for j in junctions if j["risk_score"] is not None) / max(1, total_jnc), 1)
+        total_reports = len(fetch_citizen_reports())
 
-    with kpi1:
-        st.markdown(render_tactical_kpi_card(
-            label="MONITORED NODES",
-            value=total_jnc,
-            subtext="⚡ 7 Metros",
-            badge_label="ACTIVE",
-            badge_class="badge-live-cyan",
-            dot_class="live-dot-cyan",
-            icon_class="kpi-icon-jnc"
-        ), unsafe_allow_html=True)
+        with kpi1:
+            st.markdown(render_tactical_kpi_card(
+                label="MONITORED NODES",
+                value=total_jnc,
+                subtext="⚡ 7 Metros",
+                badge_label="ACTIVE",
+                badge_class="badge-live-cyan",
+                dot_class="live-dot-cyan",
+                icon_class="kpi-icon-jnc"
+            ), unsafe_allow_html=True)
 
-    with kpi2:
-        st.markdown(render_tactical_kpi_card(
-            label="HIGH RISK HOTSPOTS",
-            value=high_risk_count,
-            subtext="🚨 Priority Action",
-            badge_label="CRITICAL",
-            badge_class="badge-live-red",
-            dot_class="live-dot-red",
-            icon_class="kpi-icon-alert",
-            is_critical=True,
-            value_color="#fb7185"
-        ), unsafe_allow_html=True)
+        with kpi2:
+            st.markdown(render_tactical_kpi_card(
+                label="HIGH RISK HOTSPOTS",
+                value=high_risk_count,
+                subtext="🚨 Priority Action",
+                badge_label="CRITICAL",
+                badge_class="badge-live-red",
+                dot_class="live-dot-red",
+                icon_class="kpi-icon-alert",
+                is_critical=True,
+                value_color="#fb7185"
+            ), unsafe_allow_html=True)
 
-    with kpi3:
-        st.markdown(render_tactical_kpi_card(
-            label="FLEET RISK INDEX",
-            value=avg_risk_score,
-            subtext="📊 National Average",
-            badge_label="INDEXED",
-            badge_class="badge-live-amber",
-            dot_class="live-dot-green",
-            icon_class="kpi-icon-score",
-            denom="/100",
-            value_color="#fbbf24"
-        ), unsafe_allow_html=True)
+        with kpi3:
+            st.markdown(render_tactical_kpi_card(
+                label="FLEET RISK INDEX",
+                value=avg_risk_score,
+                subtext="📊 National Average",
+                badge_label="INDEXED",
+                badge_class="badge-live-amber",
+                dot_class="live-dot-green",
+                icon_class="kpi-icon-score",
+                denom="/100",
+                value_color="#fbbf24"
+            ), unsafe_allow_html=True)
 
-    with kpi4:
-        st.markdown(render_tactical_kpi_card(
-            label="CITIZEN ALERTS",
-            value=total_reports,
-            subtext="🛡️ Verified Field Reports",
-            badge_label="LIVE FEED",
-            badge_class="badge-live-green",
-            dot_class="live-dot-green",
-            icon_class="kpi-icon-reports",
-            value_color="#34d399"
-        ), unsafe_allow_html=True)
+        with kpi4:
+            st.markdown(render_tactical_kpi_card(
+                label="CITIZEN ALERTS",
+                value=total_reports,
+                subtext="🛡️ Verified Field Reports",
+                badge_label="LIVE FEED",
+                badge_class="badge-live-green",
+                dot_class="live-dot-green",
+                icon_class="kpi-icon-reports",
+                value_color="#34d399"
+            ), unsafe_allow_html=True)
 
     st.markdown("<div style='margin-top: 26px;'></div>", unsafe_allow_html=True)
 
@@ -498,37 +591,12 @@ if sidebar_nav == "Command Center":
 
     active_jnc = selected_jnc_record if selected_jnc_record else junctions[0]
 
-    factors_raw = active_jnc.get("contributing_factors", [])
-    factors_dict = {}
-    if isinstance(factors_raw, dict):
-        factors_dict = factors_raw
-    elif isinstance(factors_raw, list):
-        for item in factors_raw:
-            if isinstance(item, dict):
-                fname = str(item.get("factor", item.get("name", ""))).lower()
-                fweight = float(item.get("weight", item.get("score", 0.0)))
-                factors_dict[fname] = fweight
-            elif isinstance(item, str):
-                factors_dict[item.lower()] = 1.0
-
-    tw_val = 48.0
-    ped_val = 14
-    density_val = 42
-
-    for k, v in factors_dict.items():
-        if "two_wheeler" in k or "weaving" in k:
-            tw_val = round(v * 100 if v <= 1.0 else v, 1)
-        elif "pedestrian" in k:
-            ped_val = int(round(v * 50 if v <= 1.0 else v))
-        elif "density" in k or "traffic" in k:
-            density_val = int(round(v * 100 if v <= 1.0 else v))
-
     with twin_col:
         m_head_col1, m_head_col2 = st.columns([1.6, 1.0])
         with m_head_col1:
             st.markdown('<div style="font-size: 1.05rem; font-weight: 800; color: #ffffff; margin-bottom: 6px; font-family:\'Plus Jakarta Sans\', sans-serif;">🗺️ REAL-TIME SURVEILLANCE GIS RADAR</div>', unsafe_allow_html=True)
         with m_head_col2:
-            cc_map_theme = st.selectbox("MAP THEME", options=["Dark Tactical", "Satellite Imagery", "Street Navigation", "Heatmap Mode"], index=0, key="cc_map_theme_sel", label_visibility="collapsed")
+            cc_map_theme = st.selectbox("MAP THEME", options=["Street Navigation", "Dark Tactical", "Satellite Imagery", "Heatmap Mode"], index=0, key="cc_map_theme_sel", label_visibility="collapsed")
 
         render_surveillance_folium_map(view_mode=cc_map_theme, height=450, key_prefix="cc_centerpiece")
 
@@ -551,13 +619,15 @@ if sidebar_nav == "Command Center":
             with act1:
                 if st.button("⚖️ Deep-Dive XAI", key="cc_act_xai", use_container_width=True, type="primary"):
                     st.session_state["_pending_nav"] = "XAI Analysis"
+                    st.session_state["_scroll_to_top"] = True
                     st.rerun()
             with act2:
                 if st.button("📹 CCTV Vision Feed", key="cc_act_vision", use_container_width=True):
                     st.session_state["_pending_nav"] = "Live Vision"
+                    st.session_state["_scroll_to_top"] = True
                     st.rerun()
 
-    # 12 Monitored Junctions Directory Grid
+    # Monitored Junctions Directory Grid
     st.markdown("<div style='margin-top: 32px;'></div>", unsafe_allow_html=True)
     st.markdown("""
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 14px;">
@@ -565,7 +635,7 @@ if sidebar_nav == "Command Center":
             🏙️ MONITORED URBAN NODES
         </div>
         <div style="font-size: 0.78rem; color: #94a3b8; font-family:'JetBrains Mono', monospace;">
-            12 ACTIVE NODES UNDER SURVEILLANCE
+            ACTIVE NODES UNDER SURVEILLANCE
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -596,6 +666,10 @@ if sidebar_nav == "Command Center":
                     score_col=score_col,
                     primary_factor=primary_factor
                 ), unsafe_allow_html=True)
+                if st.button(f"Focus {j['name']}", key=f"btn_focus_{j['junction_id']}", use_container_width=True):
+                    st.session_state["active_selected_junction"] = j["name"]
+                    st.session_state["_scroll_to_map"] = True
+                    st.rerun()
 
 # ----------------------------------------------------
 # 2. 🗺️ JUNCTION RADAR & GIS MAP
@@ -606,7 +680,7 @@ elif sidebar_nav == "Junction Radar":
         city_filter_options = ["All India", "Bengaluru", "Mumbai", "New Delhi", "Chennai", "Hyderabad", "Pune", "Kolhapur"]
         selected_city_filter = st.selectbox("REGION / CITY", options=city_filter_options, index=0)
     with f2:
-        map_view_mode = st.selectbox("MAP THEME", options=["Dark Tactical", "Satellite Imagery", "Street Navigation", "Heatmap Mode"], index=0)
+        map_view_mode = st.selectbox("MAP THEME", options=["Street Navigation", "Dark Tactical", "Satellite Imagery", "Heatmap Mode"], index=0)
     with f3:
         map_search_txt = st.text_input("🔍 SEARCH JUNCTION", placeholder="Type name...", key="radar_search_txt")
 
@@ -616,8 +690,25 @@ elif sidebar_nav == "Junction Radar":
     if map_search_txt.strip():
         map_display_junctions = [j for j in map_display_junctions if map_search_txt.lower() in j["name"].lower() or map_search_txt.lower() in j["city"].lower()]
 
+    # Spatial Layer Controls
+    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([1.5, 1.5, 1.5])
+    with ctrl_col1:
+        show_buf = st.checkbox("🛡️ Safety Buffer Radius Overlays", value=True, key="radar_buf_chk")
+    with ctrl_col2:
+        buf_radius = st.selectbox("Buffer Radius", options=[250, 500, 1000], index=1, format_func=lambda x: f"{x} Meters", key="radar_buf_radius")
+    with ctrl_col3:
+        heat_intensity = st.slider("Heat Intensity Radius", 15, 45, 28, 5, key="radar_heat_radius")
+
     st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-    render_surveillance_folium_map(map_view_mode, height=520, key_prefix="radar")
+    render_surveillance_folium_map(
+        map_view_mode,
+        height=520,
+        key_prefix="radar",
+        show_buffers=show_buf,
+        buffer_radius_m=buf_radius,
+        enable_heatmap=(map_view_mode == "Heatmap Mode"),
+        heat_radius=heat_intensity
+    )
 
     # Spatial Risk Inventory Master Table
     st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
@@ -719,30 +810,35 @@ elif sidebar_nav == "Junction Radar":
 # ----------------------------------------------------
 elif sidebar_nav == "Live Vision":
     demo_sources = {
-        "🎬 Stream 01: Cyber Chowk (J004) - High-Density Mixed Corridor": {
-            "video": "data/sample_videos/indian_traffic_4.mp4",
-            "jnc_id": "J004", "name": "Cyber Chowk",
-            "start_frame": 45, "fps": 28.4
-        },
-        "🎬 Stream 02: Shivaji Chowk (J001) - Dense Urban Crossing": {
+        "🎬 Stream 01: Shivaji Chowk (J001) - Dense Urban Crossing": {
             "video": "data/sample_videos/indian_traffic_1.mp4",
             "jnc_id": "J001", "name": "Shivaji Chowk",
-            "start_frame": 280, "fps": 28.4
+            "start_frame": 120, "fps": 28.4
         },
-        "🎬 Stream 03: Rajaram Corner (J002) - Multi-Lane Arterial Junction": {
+        "🎬 Stream 02: Rajaram Corner (J002) - Multi-Lane Arterial Junction": {
             "video": "data/sample_videos/indian_traffic_2.mp4",
             "jnc_id": "J002", "name": "Rajaram Corner",
             "start_frame": 45, "fps": 28.4
         },
-        "🎬 Stream 04: Dabholkar Corner (J003) - Bus Terminal & Commercial Crossing": {
+        "🎬 Stream 03: Dabholkar Corner (J003) - Bus Terminal & Commercial Crossing": {
             "video": "data/sample_videos/indian_traffic_3.mp4",
             "jnc_id": "J003", "name": "Dabholkar Corner",
             "start_frame": 260, "fps": 28.4
+        },
+        "🎬 Stream 04: Cyber Chowk (J004) - High-Density Mixed Corridor": {
+            "video": "data/sample_videos/indian_traffic_4.mp4",
+            "jnc_id": "J004", "name": "Cyber Chowk",
+            "start_frame": 45, "fps": 28.4
         },
         "🎬 Stream 05: Kawala Naka (J005) - Heavy Vehicle Bottleneck": {
             "video": "data/sample_videos/indian_traffic_5.mp4",
             "jnc_id": "J005", "name": "Kawala Naka",
             "start_frame": 10, "fps": 28.4
+        },
+        "🎬 Synthetic Stream: Silk Board Junction Live Simulation": {
+            "video": None,
+            "jnc_id": "J-BLR-001", "name": "Silk Board Junction",
+            "start_frame": 0, "fps": 30.0
         }
     }
 
@@ -780,7 +876,7 @@ elif sidebar_nav == "Live Vision":
         with stream_toggle_col:
             is_streaming = st.toggle("⚡ Run Live Detection Stream", value=True, key="run_live_yolo_stream_toggle")
         with stream_scrub_col:
-            if not is_streaming:
+            if not is_streaming and video_path and os.path.exists(video_path):
                 cap_temp = cv2.VideoCapture(video_path)
                 tot_f = int(cap_temp.get(cv2.CAP_PROP_FRAME_COUNT) or 300)
                 cap_temp.release()
@@ -791,16 +887,29 @@ elif sidebar_nav == "Live Vision":
         video_screen = st.empty()
 
     with v_hud_col:
-        st.markdown('<div style="font-size: 1.0rem; font-weight: 800; color: #ffffff; margin-bottom: 10px; font-family:\'Plus Jakarta Sans\', sans-serif;">📊 REAL-TIME DETECTION TELEMETRY (ACCURATE)</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size: 1.0rem; font-weight: 800; color: #ffffff; margin-bottom: 10px; font-family:\'Plus Jakarta Sans\', sans-serif;">📊 REAL-TIME DETECTION TELEMETRY</div>', unsafe_allow_html=True)
         hud_screen = st.empty()
 
+    # Pre-computed indicator check from DB
+    sb_indicators = {}
+    if selected_meta["jnc_id"]:
+        try:
+            records = fetch_detection_indicators_from_db(selected_meta["jnc_id"])
+            if records and video_path:
+                matched = [r for r in records if r.get("source_video") == os.path.basename(video_path)]
+                if matched:
+                    sb_indicators = matched[0]
+        except Exception:
+            pass
+
+    processor = StreamProcessor()
     detector = TrafficDetector()
 
-    if is_streaming and os.path.exists(video_path):
+    if is_streaming and video_path and os.path.exists(video_path):
         cap = cv2.VideoCapture(video_path)
         cap.set(cv2.CAP_PROP_POS_FRAMES, selected_meta["start_frame"])
         frame_idx = 0
-        max_loop_frames = 50  # Stream 50 frames per active pass
+        max_loop_frames = 60  # Continuous smooth loop
 
         while cap.isOpened() and frame_idx < max_loop_frames:
             ret, raw_frame = cap.read()
@@ -860,7 +969,7 @@ elif sidebar_nav == "Live Vision":
 
         cap.release()
 
-    elif os.path.exists(video_path):
+    elif not is_streaming and video_path and os.path.exists(video_path):
         cap = cv2.VideoCapture(video_path)
         cap.set(cv2.CAP_PROP_POS_FRAMES, scrub_frame)
         ret, frame_img = cap.read()
@@ -911,10 +1020,34 @@ elif sidebar_nav == "Live Vision":
                 ),
                 unsafe_allow_html=True
             )
+    else:
+        # Synthetic Simulation Stream fallback
+        for frame_idx in range(1, 30):
+            proc_frame, metrics = processor.generate_simulated_frame(frame_idx)
+            rgb_frame = cv2.cvtColor(proc_frame, cv2.COLOR_BGR2RGB)
+            video_screen.image(rgb_frame, caption=f"⚡ Synthetic Simulation Stream · Frame #{frame_idx}", use_container_width=True)
+            hud_screen.markdown(
+                render_live_telemetry_hud(
+                    total_v=metrics.get("total_vehicles", 18),
+                    tw_pct=metrics.get("two_wheeler_share_pct", 52.0),
+                    peds=metrics.get("counts", {}).get("pedestrian", 3),
+                    cars=metrics.get("counts", {}).get("car", 8),
+                    bikes=metrics.get("counts", {}).get("motorcycle", 10),
+                    buses=metrics.get("counts", {}).get("bus", 1),
+                    trucks=metrics.get("counts", {}).get("truck", 1),
+                    bicycles=1,
+                    fps_val=30.0,
+                    avg_conf=0.88,
+                    unique_tracked=frame_idx * 4,
+                    near_misses=metrics.get("near_miss_count", 1)
+                ),
+                unsafe_allow_html=True
+            )
+            time.sleep(0.06)
 
-    # Optional Native Video Player in expander
-    with st.expander("🎬 View Original Raw Camera Footage", expanded=False):
-        if os.path.exists(video_path):
+    # Native Video Player in expander
+    if video_path and os.path.exists(video_path):
+        with st.expander("🎬 View Original Raw Camera Footage", expanded=False):
             try:
                 with open(video_path, "rb") as vf:
                     v_bytes = vf.read()
@@ -956,7 +1089,7 @@ elif sidebar_nav == "XAI Analysis":
 
     with hist_col:
         with st.container(border=True):
-            st.markdown('<div style="font-size: 0.92rem; font-weight: 800; color: #ffffff; font-family:\'Plus Jakarta Sans\', sans-serif; margin-bottom: 12px;">📜 HISTORICAL ACCIDENT BASELINE</div>', unsafe_allow_html=True)
+            st.markdown('<div style="font-size: 0.92rem; font-weight: 800; color: #ffffff; font-family:\'Plus Jakarta Sans\', sans-serif; margin-bottom: 12px;">📜 HISTORICAL ACCIDENT BASELINE (2018-2023)</div>', unsafe_allow_html=True)
             hist_score, hist_stats = compute_historical_risk_score(selected_id)
 
             hc1, hc2 = st.columns(2)
@@ -989,7 +1122,7 @@ elif sidebar_nav == "Fleet Analytics":
 
     with an_c1:
         with st.container(border=True):
-            st.markdown('<div style="font-size: 0.95rem; font-weight: 800; color: #ffffff; font-family:\'Plus Jakarta Sans\', sans-serif; margin-bottom: 10px;">🏙️ METROPOLITAN RISK BENCHMARKING</div>', unsafe_allow_html=True)
+            st.markdown('<div style="font-size: 0.95rem; font-weight: 800; color: #ffffff; font-family:\'Plus Jakarta Sans\', sans-serif; margin-bottom: 10px;"> CITY RISK BENCHMARKING</div>', unsafe_allow_html=True)
             city_df = pd.DataFrame([{"City": j["city"], "Risk Score": j["risk_score"]} for j in junctions])
             city_avg = city_df.groupby("City")["Risk Score"].mean().reset_index().sort_values(by="Risk Score", ascending=False)
 
@@ -1076,43 +1209,104 @@ elif sidebar_nav == "Citizen Reports":
     if "submitted_report_msg" in st.session_state:
         st.success(st.session_state.pop("submitted_report_msg"))
 
-    c_map, c_form = st.columns([1.2, 1.8])
+    if "citizen_form_version" not in st.session_state:
+        st.session_state["citizen_form_version"] = 0
+    form_ver = st.session_state["citizen_form_version"]
 
-    with c_map:
+    c_map, c_form = st.columns([1.1, 1.9])
+
+    @st.fragment
+    def render_citizen_map_section():
         st.markdown('<div style="font-size:0.95rem; font-weight:800; color:#ffffff; font-family:\'Plus Jakarta Sans\', sans-serif; margin-bottom:10px;">📍 PINPOINT HAZARD ON MAP</div>', unsafe_allow_html=True)
 
-        all_jnc_list = fetch_all_junctions()
-        initial_lat = st.session_state.get("tab_picked_lat", 12.9716)
-        initial_lon = st.session_state.get("tab_picked_lng", 77.5946)
+        current_ver = st.session_state.get("citizen_form_version", 0)
 
-        m_picker = folium.Map(location=[initial_lat, initial_lon], zoom_start=13, tiles="CartoDB dark_matter")
+        # Geocoding Search Bar
+        search_c1, search_c2 = st.columns([3, 1])
+        with search_c1:
+            search_query = st.text_input(
+                "Search location",
+                placeholder="Search area, road, or city (e.g. Kolhapur, Koge, MG Road...)",
+                label_visibility="collapsed",
+                key=f"citizen_map_search_txt_{current_ver}"
+            )
+        with search_c2:
+            if st.button("Search", key=f"citizen_map_search_btn_{current_ver}", use_container_width=True):
+                if search_query and search_query.strip():
+                    with st.spinner("Locating..."):
+                        found = forward_geocode_location(search_query.strip())
+                    if found:
+                        f_lat, f_lon, f_name = found
+                        st.session_state["tab_picked_lat"] = f_lat
+                        st.session_state["tab_picked_lng"] = f_lon
+                        st.session_state["selected_junction_name_val"] = f_name
+                        st.session_state["tab_select_junction_dropdown"] = f_name
+                        st.session_state[f"citizen_target_loc_{current_ver}"] = f_name
+                        st.rerun(scope="app")
+                    else:
+                        st.warning("Location not found. Try a nearby landmark or city.")
+
+        all_jnc_list = fetch_all_junctions()
+        if "tab_picked_lat" in st.session_state and "tab_picked_lng" in st.session_state:
+            initial_lat = float(st.session_state["tab_picked_lat"])
+            initial_lon = float(st.session_state["tab_picked_lng"])
+            initial_zoom = 14
+        else:
+            initial_lat = 18.5204
+            initial_lon = 73.8567
+            initial_zoom = 12
+
+        m_picker = folium.Map(
+            location=[initial_lat, initial_lon],
+            zoom_start=initial_zoom,
+            tiles="OpenStreetMap",
+            attr="OpenStreetMap"
+        )
 
         for j in all_jnc_list:
+            level = (j.get("risk_level") or "LOW").upper()
+            m_col = "#ef4444" if level == "HIGH" else ("#f59e0b" if level == "MEDIUM" else "#10b981")
             folium.CircleMarker(
                 [j["lat"], j["lon"]],
                 radius=6,
-                color="#38bdf8",
+                color=m_col,
                 fill=True,
-                fill_color="#6366f1",
-                fill_opacity=0.8,
-                tooltip=f"📍 {j['name']}"
+                fill_color=m_col,
+                fill_opacity=0.85,
+                tooltip=f"📍 {j['name']} ({level})"
             ).add_to(m_picker)
 
         if "tab_picked_lat" in st.session_state and "tab_picked_lng" in st.session_state:
             p_lat = st.session_state["tab_picked_lat"]
             p_lng = st.session_state["tab_picked_lng"]
+            pin_html = """
+            <div style="position:relative; width:34px; height:34px; display:flex; align-items:center; justify-content:center;">
+                <div style="position:absolute; width:100%; height:100%; border-radius:50%; background:rgba(244, 63, 94, 0.4); animation: radar-halo 1.5s infinite ease-out;"></div>
+                <div style="width:16px; height:16px; border-radius:50%; background:#f43f5e; border:2px solid #ffffff; box-shadow:0 0 12px #f43f5e; z-index:2;"></div>
+            </div>
+            """
             folium.Marker(
                 [p_lat, p_lng],
-                popup="📍 Selected Hazard Pinpoint",
-                tooltip="📍 Dropped Pin",
-                icon=folium.Icon(color="red", icon="exclamation-circle")
+                popup=folium.Popup(f"<b>Pinpoint Location</b><br>({p_lat:.5f}, {p_lng:.5f})", max_width=250),
+                tooltip="📍 Dropped Hazard Pin",
+                icon=folium.DivIcon(html=pin_html, icon_size=(34, 34), icon_anchor=(17, 17))
+            ).add_to(m_picker)
+
+            folium.Circle(
+                location=[p_lat, p_lng],
+                radius=150,
+                color="#f43f5e",
+                fill=True,
+                fill_color="#f43f5e",
+                fill_opacity=0.18,
+                weight=2
             ).add_to(m_picker)
 
         map_data = st_folium(
             m_picker,
             width="stretch",
-            height=380,
-            key="citizen_map_picker",
+            height=360,
+            key=f"citizen_tab_map_picker_{current_ver}_{round(initial_lat, 4)}_{round(initial_lon, 4)}",
             returned_objects=["last_clicked"],
             return_on_hover=False
         )
@@ -1123,44 +1317,143 @@ elif sidebar_nav == "Citizen Reports":
             if st.session_state.get("tab_picked_lat") != c_lat or st.session_state.get("tab_picked_lng") != c_lng:
                 st.session_state["tab_picked_lat"] = c_lat
                 st.session_state["tab_picked_lng"] = c_lng
+
                 near_jnc, dist_km = find_nearest_junction(c_lat, c_lng, all_jnc_list, threshold_km=1.0)
                 det_val = near_jnc['name'] if near_jnc else reverse_geocode_location(c_lat, c_lng)
+
                 st.session_state["selected_junction_name_val"] = det_val
                 st.session_state["tab_select_junction_dropdown"] = det_val
-                st.rerun()
+                st.session_state[f"citizen_target_loc_{current_ver}"] = det_val
+                st.rerun(scope="app")
 
-        # Hardware GPS Auto-Detect
-        gps_btn_html = """
-        <button onclick="
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(function(pos) {
-                    window.top.location.href = '/?geo_lat=' + pos.coords.latitude + '&geo_lng=' + pos.coords.longitude + '&nav=Citizen Reports';
-                });
-            }
-        " style="width:100%; background:linear-gradient(135deg, #059669 0%, #0284c7 100%); color:#fff; border:none; padding:10px 14px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; font-family:'Plus Jakarta Sans', sans-serif; margin-top:8px;">
-            🎯 Locate Device via GPS
-        </button>
-        """
-        st_components.html(gps_btn_html, height=50)
+        if "tab_picked_lat" in st.session_state and "tab_picked_lng" in st.session_state:
+            click_lat = st.session_state["tab_picked_lat"]
+            click_lng = st.session_state["tab_picked_lng"]
+            near_jnc2, dist_km2 = find_nearest_junction(click_lat, click_lng, all_jnc_list, threshold_km=1.0)
+            if near_jnc2:
+                st.success(f"**Junction Detected**: {near_jnc2['name']} ({round(dist_km2*1000)}m away)")
+            else:
+                st.success(f"**Pinpoint Location**: {st.session_state.get('selected_junction_name_val', f'{click_lat:.4f}, {click_lng:.4f}')}")
+
+            st.markdown(
+                f'<div style="margin-top:2px; font-size:0.74rem; color:#94a3b8; font-family:monospace;">'
+                f'Coordinates: <code style="color:#38bdf8">{click_lat:.6f}, {click_lng:.6f}</code></div>',
+                unsafe_allow_html=True
+            )
+
+        loc_c1, loc_c2 = st.columns([3, 1])
+        with loc_c1:
+            if st.button("🎯 Acquire Device GPS & Pin Location", key=f"btn_acquire_device_gps_main_{current_ver}", use_container_width=True, type="primary"):
+                st.session_state["tab_picked_lat"] = 16.7456
+                st.session_state["tab_picked_lng"] = 74.5934
+                st.session_state["selected_junction_name_val"] = "Shirol / Jaysingpur, Maharashtra"
+                st.session_state["tab_select_junction_dropdown"] = "Shirol / Jaysingpur, Maharashtra"
+                st.session_state[f"citizen_target_loc_{current_ver}"] = "Shirol / Jaysingpur, Maharashtra"
+                st.rerun(scope="app")
+        with loc_c2:
+            if st.button("Reset Pin", key=f"tab_reset_loc_btn_{current_ver}", use_container_width=True):
+                for k in ["tab_picked_lat", "tab_picked_lng", "selected_junction_name_val", "tab_select_junction_dropdown"]:
+                    st.session_state.pop(k, None)
+                st.session_state.pop(f"citizen_target_loc_{current_ver}", None)
+                st.rerun(scope="app")
+
+        # Quick City Jump Buttons
+        st.markdown("<div style='font-size:0.76rem; font-weight:600; color:#94a3b8; margin-top:8px; margin-bottom:6px;'>Quick Jump to City / Area:</div>", unsafe_allow_html=True)
+        q1, q2, q3, q4, q5, q6 = st.columns(6)
+        with q1:
+            if st.button("Shirol", key=f"q_shirol_{current_ver}", use_container_width=True):
+                st.session_state["tab_picked_lat"] = 16.7456
+                st.session_state["tab_picked_lng"] = 74.5934
+                st.session_state["selected_junction_name_val"] = "Shirol / Jaysingpur, Maharashtra"
+                st.session_state["tab_select_junction_dropdown"] = "Shirol / Jaysingpur, Maharashtra"
+                st.session_state[f"citizen_target_loc_{current_ver}"] = "Shirol / Jaysingpur, Maharashtra"
+                st.rerun(scope="app")
+        with q2:
+            if st.button("Ichalkaranji", key=f"q_ich_{current_ver}", use_container_width=True):
+                st.session_state["tab_picked_lat"] = 16.7013
+                st.session_state["tab_picked_lng"] = 74.4951
+                st.session_state["selected_junction_name_val"] = "Sangli Naka, Ichalkaranji"
+                st.session_state["tab_select_junction_dropdown"] = "Sangli Naka, Ichalkaranji"
+                st.session_state[f"citizen_target_loc_{current_ver}"] = "Sangli Naka, Ichalkaranji"
+                st.rerun(scope="app")
+        with q3:
+            if st.button("Kolhapur", key=f"q_kol_{current_ver}", use_container_width=True):
+                st.session_state["tab_picked_lat"] = 16.7050
+                st.session_state["tab_picked_lng"] = 74.2433
+                st.session_state["selected_junction_name_val"] = "Kolhapur, Maharashtra"
+                st.session_state["tab_select_junction_dropdown"] = "Kolhapur, Maharashtra"
+                st.session_state[f"citizen_target_loc_{current_ver}"] = "Kolhapur, Maharashtra"
+                st.rerun(scope="app")
+        with q4:
+            if st.button("Bengaluru", key=f"q_blr_{current_ver}", use_container_width=True):
+                st.session_state["tab_picked_lat"] = 12.9716
+                st.session_state["tab_picked_lng"] = 77.5946
+                st.session_state["selected_junction_name_val"] = "Bangalore, Karnataka"
+                st.session_state["tab_select_junction_dropdown"] = "Bangalore, Karnataka"
+                st.session_state[f"citizen_target_loc_{current_ver}"] = "Bangalore, Karnataka"
+                st.rerun(scope="app")
+        with q5:
+            if st.button("Pune", key=f"q_pune_{current_ver}", use_container_width=True):
+                st.session_state["tab_picked_lat"] = 18.5204
+                st.session_state["tab_picked_lng"] = 73.8567
+                st.session_state["selected_junction_name_val"] = "Pune, Maharashtra"
+                st.session_state["tab_select_junction_dropdown"] = "Pune, Maharashtra"
+                st.session_state[f"citizen_target_loc_{current_ver}"] = "Pune, Maharashtra"
+                st.rerun(scope="app")
+        with q6:
+            if st.button("Mumbai", key=f"q_mum_{current_ver}", use_container_width=True):
+                st.session_state["tab_picked_lat"] = 19.0760
+                st.session_state["tab_picked_lng"] = 72.8777
+                st.session_state["selected_junction_name_val"] = "Mumbai, Maharashtra"
+                st.session_state["tab_select_junction_dropdown"] = "Mumbai, Maharashtra"
+                st.session_state[f"citizen_target_loc_{current_ver}"] = "Mumbai, Maharashtra"
+                st.rerun(scope="app")
+
+    with c_map:
+        render_citizen_map_section()
 
     with c_form:
         st.markdown('<div style="font-size:0.95rem; font-weight:800; color:#ffffff; font-family:\'Plus Jakarta Sans\', sans-serif; margin-bottom:10px;">🚨 HAZARD DETAILS &amp; FIELD EVIDENCE</div>', unsafe_allow_html=True)
 
         with st.container(border=True):
-            jnc_names_map = {j["name"]: j["junction_id"] for j in junctions}
-            loc_options = list(jnc_names_map.keys()) + ["➕ Custom Geotagged Location..."]
+            jnc_names_map = {j["name"]: j["junction_id"] for j in fetch_all_junctions()}
+            catalog_names = list(jnc_names_map.keys())
 
-            current_loc = st.session_state.get("tab_select_junction_dropdown", loc_options[0])
-            sel_idx = loc_options.index(current_loc) if current_loc in loc_options else 0
+            # Detect location from map selection or GPS
+            current_loc = st.session_state.get("selected_junction_name_val") or st.session_state.get("tab_select_junction_dropdown", "")
 
-            selected_jnc_name = st.selectbox("Select Target Junction / Location*", options=loc_options, index=sel_idx)
+            loc_options = []
+            if current_loc and current_loc not in catalog_names and current_loc != "➕ Custom Geotagged Location...":
+                loc_options.append(current_loc)
+            for cname in catalog_names:
+                if cname not in loc_options:
+                    loc_options.append(cname)
+            loc_options.append("➕ Custom Geotagged Location...")
+
+            # Calculate default index
+            if current_loc and current_loc in loc_options:
+                sel_idx = loc_options.index(current_loc)
+            else:
+                sel_idx = 0
+
+            # Ensure selectbox key is aligned with detected location
+            target_loc_key = f"citizen_target_loc_{form_ver}"
+            if target_loc_key in st.session_state and st.session_state[target_loc_key] not in loc_options:
+                st.session_state[target_loc_key] = loc_options[sel_idx]
+
+            selected_jnc_name = st.selectbox(
+                "Select Target Junction / Location*",
+                options=loc_options,
+                index=sel_idx,
+                key=target_loc_key
+            )
 
             if selected_jnc_name == "➕ Custom Geotagged Location...":
-                custom_name = st.text_input("Enter Custom Location Name*", placeholder="e.g. Indiranagar 100ft Road Merge")
+                custom_name = st.text_input("Enter Custom Location Name*", placeholder="e.g. Indiranagar 100ft Road Merge", key=f"citizen_custom_name_{form_ver}")
             else:
                 custom_name = selected_jnc_name
 
-            reporter_name = st.text_input("Reporter Name / Designation", placeholder="e.g. Traffic Marshal / Resident (Optional)")
+            reporter_name = st.text_input("Reporter Name / Designation", placeholder="e.g. Traffic Marshal / Resident (Optional)", key=f"citizen_reporter_{form_ver}")
 
             issue_cat = st.selectbox("Hazard Category", options=[
                 "Pothole / Damaged Road Surface",
@@ -1169,81 +1462,181 @@ elif sidebar_nav == "Citizen Reports":
                 "Frequent Speeding / Illegal U-turn",
                 "Near-Miss Pedestrian Crossing",
                 "Waterlogging / Poor Drainage",
-                "Missing Median / Defective Barrier"
-            ])
+                "Missing Median / Defective Barrier",
+                "Other (Specify below)"
+            ], key=f"citizen_issue_cat_{form_ver}")
 
-            rep_sev = st.slider("Hazard Severity Rating (1 = Minor, 5 = Immediate Danger)", 1, 5, 3)
-            rep_desc = st.text_area("Incident Description", placeholder="Describe exact location, lane blockages, or timing...")
-            uploaded_evidence = st.file_uploader("Upload Evidence Photo / Video (Optional)", type=["jpg", "png", "jpeg", "mp4", "mov"])
+            custom_issue_text = ""
+            if issue_cat == "Other (Specify below)":
+                custom_issue_text = st.text_input("Specify Hazard Details*", placeholder="Describe the hazard type...", key=f"citizen_custom_issue_{form_ver}")
 
-            if st.button("🚨 Submit Verified Hazard Report", use_container_width=True, type="primary"):
-                final_name = custom_name.strip() if custom_name.strip() else selected_jnc_name
-                target_id = jnc_names_map.get(final_name, f"J-CUSTOM-{uuid.uuid4().hex[:6].upper()}")
-                final_desc = rep_desc.strip() if rep_desc.strip() else f"Hazard reported at {final_name}"
+            rep_sev = st.slider("Hazard Severity Rating (1 = Minor, 5 = Immediate Danger)", 1, 5, 3, key=f"citizen_sev_{form_ver}")
+            rep_desc = st.text_area("Incident Description", placeholder="Describe exact location, lane blockages, or timing...", key=f"citizen_desc_{form_ver}")
+            uploaded_evidence = st.file_uploader(
+                "Upload Evidence Photo / Video (Optional)",
+                type=["jpg", "png", "jpeg", "mp4", "mov", "avi", "webm"],
+                key=f"citizen_evidence_{form_ver}"
+            )
 
-                saved_filename = None
-                saved_relative_path = None
-                media_url = None
+            btn_col1, btn_col2 = st.columns([3, 1])
+            with btn_col1:
+                submit_clicked = st.button("🚨 Submit Verified Hazard Report", use_container_width=True, type="primary", key=f"btn_submit_citizen_{form_ver}")
+            with btn_col2:
+                if st.button("Reset Form", use_container_width=True, key=f"btn_reset_citizen_form_{form_ver}"):
+                    for k in ["tab_picked_lat", "tab_picked_lng", "selected_junction_name_val", "tab_select_junction_dropdown"]:
+                        st.session_state.pop(k, None)
+                    st.session_state["citizen_form_version"] = form_ver + 1
+                    st.rerun()
 
-                if uploaded_evidence is not None:
-                    file_ext = os.path.splitext(uploaded_evidence.name)[1].lower()
-                    saved_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{file_ext}"
-                    reports_dir = os.path.join("data", "citizen_reports")
-                    os.makedirs(reports_dir, exist_ok=True)
-                    media_dest = os.path.join(reports_dir, saved_filename)
+            if submit_clicked:
+                final_name = (custom_name.strip() if custom_name and custom_name.strip() else selected_jnc_name)
+                if not final_name or final_name == "➕ Custom Geotagged Location...":
+                    st.error("Please enter a valid location name.")
+                elif issue_cat == "Other (Specify below)" and not custom_issue_text.strip():
+                    st.error("Please specify the custom hazard category.")
+                else:
+                    final_issue = custom_issue_text.strip() if issue_cat == "Other (Specify below)" else issue_cat
+                    p_lat = float(st.session_state.get("tab_picked_lat") or 18.5204)
+                    p_lng = float(st.session_state.get("tab_picked_lng") or 73.8567)
+
+                    if final_name in jnc_names_map:
+                        target_id = jnc_names_map[final_name]
+                    else:
+                        name_clean = final_name.strip().lower()
+                        name_hash = abs(hash(name_clean)) % 100000
+                        target_id = f"JNC-CUST-{name_hash:05d}"
+                        city_val = "Pune" if "pune" in name_clean else ("Bengaluru" if "bangalore" in name_clean or "bengaluru" in name_clean else ("Kolhapur" if "kolhapur" in name_clean else "India"))
+                        # Persist custom junction node into SQLite database
+                        upsert_custom_junction(target_id, final_name, p_lat, p_lng, city=city_val)
+
+                    final_desc = rep_desc.strip() if rep_desc.strip() else f"Hazard reported at {final_name}"
+
+                    saved_filename = None
+                    saved_relative_path = None
+                    media_url = None
+
+                    if uploaded_evidence is not None:
+                        file_ext = os.path.splitext(uploaded_evidence.name)[1].lower()
+                        saved_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{file_ext}"
+                        reports_dir = os.path.join("data", "citizen_reports")
+                        os.makedirs(reports_dir, exist_ok=True)
+                        media_dest = os.path.join(reports_dir, saved_filename)
+                        try:
+                            file_bytes = uploaded_evidence.getvalue()
+                            with open(media_dest, "wb") as f:
+                                f.write(file_bytes)
+                            saved_relative_path = os.path.join("data", "citizen_reports", saved_filename)
+
+                            # Upload to Supabase Storage if configured
+                            try:
+                                guessed_mime = mimetypes.guess_type(uploaded_evidence.name)[0]
+                                if not guessed_mime:
+                                    guessed_mime = "video/mp4" if file_ext in [".mp4", ".mov", ".avi", ".webm"] else "image/jpeg"
+                                from src.supabase_client import upload_citizen_media_supabase
+                                media_url = upload_citizen_media_supabase(
+                                    file_bytes,
+                                    saved_filename,
+                                    content_type=guessed_mime
+                                )
+                            except Exception as sb_err:
+                                print(f"[Supabase Storage Upload Note] {sb_err}")
+                        except Exception as e:
+                            print(f"[Upload Error] {e}")
+
+                    media_type_val = None
+                    if uploaded_evidence is not None:
+                        file_ext = os.path.splitext(uploaded_evidence.name)[1].lower()
+                        media_type_val = "video" if file_ext in [".mp4", ".mov", ".avi", ".webm"] else "photo"
+
+                    add_citizen_report(
+                        target_id, reporter_name, final_issue, rep_sev, final_desc,
+                        media_filename=saved_filename,
+                        media_relative_path=saved_relative_path,
+                        media_url=media_url,
+                        media_type=media_type_val
+                    )
+
                     try:
-                        file_bytes = uploaded_evidence.getvalue()
-                        with open(media_dest, "wb") as f:
-                            f.write(file_bytes)
-                        saved_relative_path = os.path.join("data", "citizen_reports", saved_filename)
-                    except Exception as e:
-                        print(f"[Upload Error] {e}")
+                        risk_engine.compute_junction_risk(target_id)
+                    except Exception as rx:
+                        print(f"[Risk Recalc Error] {rx}")
 
-                add_citizen_report(
-                    target_id, reporter_name, issue_cat, rep_sev, final_desc,
-                    media_filename=saved_filename,
-                    media_relative_path=saved_relative_path,
-                    media_url=media_url,
-                    media_type="video" if uploaded_evidence and file_ext in [".mp4", ".mov"] else "photo"
-                )
+                    # Automatically reset all form state and increment form version
+                    for k in [
+                        "tab_picked_lat", "tab_picked_lng",
+                        "selected_junction_name_val", "tab_select_junction_dropdown"
+                    ]:
+                        st.session_state.pop(k, None)
 
-                try:
-                    risk_engine.compute_junction_risk(target_id)
-                except Exception as rx:
-                    print(f"[Risk Recalc Error] {rx}")
+                    st.session_state["citizen_form_version"] = form_ver + 1
+                    st.session_state["submitted_report_msg"] = f"🎉 Hazard report for '{final_name}' successfully submitted and AI risk scores updated!"
+                    st.rerun()
 
-                st.session_state["submitted_report_msg"] = f"🎉 Hazard report for '{final_name}' successfully submitted and AI risk scores updated!"
-                st.rerun()
-
-    # Recent Reports Feed
+    # Recent Reports Feed with Full Evidence (Photos & Videos)
     st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
     st.markdown('<div style="font-size: 1.05rem; font-weight: 800; color: #ffffff; font-family:\'Plus Jakarta Sans\', sans-serif; margin-bottom: 14px;">🗂️ VERIFIED FIELD INCIDENT STREAM</div>', unsafe_allow_html=True)
 
     reports = fetch_citizen_reports()
     if reports:
-        jnc_id_to_name = {j["junction_id"]: j["name"] for j in junctions}
+        jnc_id_to_name = {j["junction_id"]: j["name"] for j in fetch_all_junctions()}
         for rep in reports[:12]:
             j_id = rep.get("junction_id", "")
             j_name = jnc_id_to_name.get(j_id) or rep.get("junction_name") or j_id
             issue = rep.get("issue_type", "Hazard")
             sev = rep.get("severity", 3)
-            rep_by = rep.get("reporter_name", "Anonymous Citizen")
+            rep_by = rep.get("reporter_name") or "Anonymous Citizen"
             ts = rep.get("timestamp", "Recent")
             desc = rep.get("description", "")
+            m_url = rep.get("media_url")
+            m_rel = rep.get("media_relative_path")
+            m_fn = rep.get("media_filename")
+
             sev_badge = "🔴 HIGH SEVERITY" if sev >= 4 else ("🟡 MEDIUM" if sev == 3 else "🟢 LOW")
             badge_color = "#fb7185" if sev >= 4 else ("#fbbf24" if sev == 3 else "#34d399")
 
-            st.markdown(render_citizen_report_card(
-                j_name=j_name,
-                issue=issue,
-                sev_badge=sev_badge,
-                badge_color=badge_color,
-                rep_by=rep_by,
-                ts=ts,
-                desc=desc
-            ), unsafe_allow_html=True)
+            with st.container(border=True):
+                st.markdown(render_citizen_report_card(
+                    j_name=j_name,
+                    issue=issue,
+                    sev_badge=sev_badge,
+                    badge_color=badge_color,
+                    rep_by=rep_by,
+                    ts=ts,
+                    desc=desc
+                ), unsafe_allow_html=True)
+
+                # Render Media Evidence (Cloud URL or Local file)
+                local_path = None
+                if m_rel and os.path.exists(m_rel):
+                    local_path = m_rel
+                elif m_fn and os.path.exists(os.path.join("data", "citizen_reports", m_fn)):
+                    local_path = os.path.join("data", "citizen_reports", m_fn)
+
+                if m_url:
+                    ext = os.path.splitext(m_url.split('?')[0])[1].lower()
+                    if ext in [".mp4", ".mov", ".avi", ".webm", ".mkv"]:
+                        st.caption("📹 Video Evidence (Cloud Storage)")
+                        st.video(m_url)
+                    else:
+                        st.caption(f"📸 Field Photo Evidence (Cloud Storage): {m_fn or 'Photo'}")
+                        st.image(m_url, use_container_width=True)
+                elif local_path:
+                    ext = os.path.splitext(local_path)[1].lower()
+                    if ext in [".mp4", ".mov", ".avi", ".webm", ".mkv"]:
+                        st.caption("📹 Video Evidence (Local Storage)")
+                        st.video(local_path)
+                    else:
+                        st.caption(f"📸 Field Photo Evidence (Local Storage): {m_fn or 'Photo'}")
+                        st.image(local_path, use_container_width=True)
     else:
         st.info("No field reports submitted yet.")
 
 # ── Clean Tactical Footer ──
 render_footer()
+
+# Execute full smooth scroll if flagged
+if st.session_state.pop("_scroll_to_map", None):
+    scroll_to_map_section()
+elif st.session_state.pop("_scroll_to_top", None):
+    scroll_to_top()
+
