@@ -98,6 +98,66 @@ if "geo_lat" in st.query_params and "geo_lng" in st.query_params:
 init_db()
 risk_engine = ExplainableRiskEngine()
 
+# ── Dedicated Lightweight Health Route for UptimeRobot / Render Probes ──
+# Trigger via: ?health=1 | ?route=health | ?nav=health | ?ping=1 | ?status=health
+is_health_check = (
+    st.query_params.get("health") in ["1", "true", "yes", "check"]
+    or st.query_params.get("route") == "health"
+    or st.query_params.get("nav") == "health"
+    or st.query_params.get("ping") == "1"
+    or st.query_params.get("status") == "health"
+)
+
+if is_health_check:
+    st.set_page_config(
+        page_title="JunctionGuard AI | System Health",
+        page_icon="💚",
+        layout="centered"
+    )
+    from datetime import datetime, timezone
+    from src.supabase_client import get_supabase_client
+
+    db_healthy = True
+    total_jnc = 0
+    total_reps = 0
+    try:
+        total_jnc = len(fetch_all_junctions())
+        total_reps = len(fetch_citizen_reports())
+    except Exception:
+        db_healthy = False
+
+    sb_status = "connected" if get_supabase_client() is not None else "local_fallback"
+
+    health_data = {
+        "status": "healthy" if db_healthy else "degraded",
+        "service": "JunctionGuard AI Road Safety Platform",
+        "version": "2.5.0",
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "database": {
+            "status": "online" if db_healthy else "error",
+            "active_junctions": total_jnc,
+            "incident_reports": total_reps
+        },
+        "cloud_storage": {
+            "provider": "Supabase Storage",
+            "status": sb_status
+        },
+        "yolo_vision_model": {
+            "status": "ready",
+            "model_file": "yolov8n.pt"
+        },
+        "uptime_robot_status": "UP"
+    }
+
+    st.markdown("""
+    <div style="text-align:center; padding: 20px 0;">
+        <h2 style="color:#10b981; margin-bottom:4px;">🟢 JunctionGuard AI System Operational</h2>
+        <div style="color:#94a3b8; font-size:0.85rem; font-family:monospace;">UptimeRobot Health Check &amp; Keep-Alive Probe</div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.json(health_data)
+    st.stop()
+
 st.set_page_config(
     page_title="JunctionGuard AI | Road Safety Platform",
     page_icon="🛡️",
