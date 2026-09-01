@@ -12,7 +12,7 @@
 
 **A production-grade, 100% explainable AI road safety surveillance suite engineered for Indian metropolitan corridors.**
 
-[🚀 Open Live Web App](https://junctionguard-ai-jxn1.onrender.com) · [💚 Uptime & Health Status](https://junctionguard-ai-jxn1.onrender.com/?health=1) · [📑 Architecture Documentation](#-technical-architecture)
+[🚀 Open Live Web App](https://junctionguard-ai-jxn1.onrender.com) · [📑 Architecture Documentation](#-technical-architecture)
 
 </div>
 
@@ -26,10 +26,10 @@
 
 ---
 
-## 🚀 Live Demo & Keep-Alive
+## 🚀 Live Demo
 
 * 🔗 **Live Web Application**: **[https://junctionguard-ai-jxn1.onrender.com](https://junctionguard-ai-jxn1.onrender.com)**
-* 💚 **UptimeRobot Keep-Alive Probe**: **`https://junctionguard-ai-jxn1.onrender.com/?health=1`**
+
 
 ---
 
