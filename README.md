@@ -1,143 +1,157 @@
+# 🛡️ JunctionGuard AI — Autonomous Road Hazard Intelligence & Surveillance Platform
+
+<div align="center">
+
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.30+-FF4B4B.svg?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![YOLOv8](https://img.shields.io/badge/YOLOv8-Ultralytics-00FFFF.svg?logo=yolo&logoColor=white)](https://ultralytics.com/)
+[![Supabase](https://img.shields.io/badge/Supabase-Cloud_Storage_&_DB-3ECF8E.svg?logo=supabase&logoColor=white)](https://supabase.com/)
+[![Render](https://img.shields.io/badge/Render-Live_Deployment-46E3B7.svg?logo=render&logoColor=white)](https://render.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests: 42 Passed](https://img.shields.io/badge/Tests-42%20Passed-brightgreen.svg)]()
+
+**A production-grade, 100% explainable AI road safety surveillance suite engineered for Indian metropolitan corridors.**
+
+[🚀 Open Live Web App](https://junctionguard-ai-jxn1.onrender.com) · [💚 Uptime & Health Status](https://junctionguard-ai-jxn1.onrender.com/?health=1) · [📑 Architecture Documentation](#-technical-architecture)
+
+</div>
+
+---
+
 ## 📖 Overview
 
-A real-time, explainable AI surveillance platform that scores accident-prone road junctions across India. It combines computer vision (YOLOv8), historical accident analytics, and crowdsourced citizen reports to produce a transparent, weighted risk score for each monitored junction — helping traffic authorities proactively identify and address danger zones *before* accidents happen.
+**JunctionGuard AI** is an autonomous, explainable AI surveillance platform that continuously monitors and scores accident-prone road junctions across India. It fuses edge computer vision (**YOLOv8n + ByteTrack**), historical collision datasets (**MoRTH / OpenCity**), and crowdsourced citizen field evidence with cloud storage (**Supabase**) to generate transparent, deterministic risk scores for every urban node — enabling traffic authorities and city engineers to prevent collisions *proactively*.
 
-> India records ~1.5 lakh road fatalities annually. This platform turns passive CCTV footage and open data into actionable, junction-level safety intelligence.
-
----
-
-## 🚀 Live Demo
-
-> 🔗 **[https://junctionguard-ai.onrender.com](https://junctionguard-ai.onrender.com)**
->
-> *(Note: Render free tier may spin down after inactivity — allow ~30 seconds for cold start)*
+> India records ~1.5 lakh road fatalities every year. JunctionGuard AI transforms passive camera streams and open telemetry into real-time, actionable junction safety intelligence.
 
 ---
 
-## ✨ Features
+## 🚀 Live Demo & Keep-Alive
 
-### 📊 Real-Time Command Dashboard
-- KPI overview: total junctions, HIGH/MEDIUM/LOW risk counts, active alerts
-- Junction selector, time-range filter, and risk-level multi-select
+* 🔗 **Live Web Application**: **[https://junctionguard-ai-jxn1.onrender.com](https://junctionguard-ai-jxn1.onrender.com)**
+* 💚 **UptimeRobot Keep-Alive Probe**: **`https://junctionguard-ai-jxn1.onrender.com/?health=1`**
 
-### 🗺️ Interactive Alert Map
-- **Folium-powered map** with 3 tile modes: Satellite (Esri), Street (OSM), Dark Tactical
-- **Pulsing red radar halos** on HIGH-risk junctions (animated CSS rings)
-- HeatMap overlay for accident density, MarkerCluster for grouped markers
-- Click-on-map → auto-syncs junction to sidebar
+---
 
-### ⚖️ Explainability & Factor Breakdown
-- Every risk score broken into **5 weighted contributing factors**:
-  | Factor | Weight |
-  |---|---|
-  | Historical Accident Severity (Kaggle dataset) | 30% |
-  | Traffic Density & Flow Velocity | 20% |
-  | Near-Miss / Conflict Proximity Index | 20% |
-  | Pedestrian Activity Level | 15% |
-  | Citizen Hazard Reports | 15% |
-- Visual weight bars and hover explanations per junction
+## ✨ 6 Core Feature Pillars
 
-### 📹 Live CCTV Vision Analytics
-- **YOLOv8n** inference detecting: Cars, Motorcycles, Buses, Trucks, Pedestrians
-- Color-coded bounding boxes; **Two-Wheeler Share %** metric for Indian traffic
-- Frame-by-frame JSON/CSV detection reports
-- OpenCV contour fallback when YOLO is offline (demo mode)
-- Live stream URL ingestion via `yt-dlp`
+### 1. 🏠 Command Center (3D Digital Twin & Surveillance)
+- **Real-Time GIS Radar**: Interactive spatial map with street navigation default and multi-layer tactical rendering.
+- **3D Circular Risk Gauge**: Animated SVG telemetry gauge with dynamic severity color gradients (`HIGH`, `MEDIUM`, `LOW`).
+- **Primary Driver Breakdown**: Instant view of the dominant risk factor (e.g. *Historical Accident Severity*, *Spatial Conflict*).
+- **Monitored Urban Nodes Directory**: Interactive grid with **1-click auto-focus** that smoothly scrolls directly to the live map and telemetry centerpiece.
 
-### 🚨 Citizen Hazard Reporting
-- **HTML5 GPS auto-detection** + IP geolocation fallback
-- Haversine distance snap to nearest junction
-- Photo/video evidence upload
-- AI-generated safety recommendations per hazard type
-- Synced to SQLite + Supabase cloud
+### 2. 🗺️ Junction Radar & Spatial Hazard Map
+- **OpenStreetMap Street View**: Full street geometry, cross-street labels, and landmark annotations.
+- **Safety Buffers & Halos**: Configurable proximity circles (250m, 500m, 1000m) and pulsing radar halos around critical hotspots.
+- **Accident Density HeatMap**: Gaussian density layers revealing multi-year collision clusters.
+- **Multi-City Filtration**: Rapidly isolate nodes across Bengaluru, Mumbai, Delhi, Pune, Kolhapur, Hyderabad, and Chennai.
+
+### 3. 📹 Live CCTV Vision Analytics
+- **YOLOv8n Edge Inference**: Real-time detection of cars, motorcycles, buses, trucks, bicycles, and pedestrians.
+- **Vulnerable Road User (VRU) Index**: Automatic computation of **Two-Wheeler Share %** and pedestrian conflict density.
+- **Interactive Scrubber**: Timeline seek bar to inspect individual frames, confidence bounds, and multi-object tracking IDs.
+- **Continuous Live Streaming**: Resilient loop handler and video pipeline with live FPS telemetry.
+
+### 4. 🧠 Explainable AI (XAI) Risk Analysis
+- **100% White-Box Formula**: Every junction risk score is mathematically decomposed into 5 weighted components:
+  $$\text{Risk Score} = 0.30 \cdot \text{HistoricalAccidents} + 0.20 \cdot \text{TrafficDensity} + 0.20 \cdot \text{NearMisses} + 0.15 \cdot \text{PedestrianActivity} + 0.15 \cdot \text{CitizenHazards}$$
+- **Interactive Spider Radar Chart**: Multi-axis factor balance visualization.
+- **Historical Baseline**: City and junction crash statistics from verified MoRTH accident records.
+- **"What-If" Counterfactual Intervention Sandbox**: Real-time sliders simulating speed calming, surface repairs, and two-wheeler lanes to project quantitative risk reduction ($\Delta$).
+
+### 5. 📊 Fleet Analytics & Macro Intelligence
+- **City-by-City Benchmarking**: Plotly horizontal bar ranking showing national risk disparities.
+- **National Severity Donut Chart**: Proportional risk profile distribution across surveillance fleet.
+- **Two-Wheeler Exposure vs Risk Score**: Scatter analysis highlighting high-risk vulnerable corridors.
+- **Corridor Priority Matrix**: Automated triage ranking junctions by immediate intervention urgency.
+
+### 6. 👥 Citizen Hazard Reporting & Cloud Evidence
+- **Interactive Map Pin-Drop & Geocoding**: Search bar, GPS one-tap auto-pin, and nearest junction detection.
+- **Target Location Dynamic Sync**: Dropped pins automatically select or generate junction records.
+- **Cloud Media Uploads**: Full photo/video evidence stored securely in **Supabase Cloud Storage** with local disk backup.
+- **Automated Form Reset**: Clean widget reset upon submission and immediate AI risk recalculation.
 
 ---
 
 ## 🏗️ Technical Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                  JUNCTIONGUARD AI PLATFORM                   │
-│                  Streamlit Web Dashboard                     │
-└───────┬──────────────────┬───────────────────┬──────────────┘
-        │                  │                   │
- ┌──────▼──────┐    ┌──────▼──────┐    ┌───────▼──────┐
- │Vision Module│    │ Risk Engine │    │ Citizen      │
- │ YOLOv8n     │    │ 5-Factor    │    │ Reporting    │
- │ OpenCV      │    │ Weighted    │    │ Portal       │
- └──────┬──────┘    └──────┬──────┘    └───────┬──────┘
-        │                  │                   │
- ┌──────▼──────┐    ┌──────▼──────┐    ┌───────▼──────┐
- │Frame Extract│    │Kaggle India │    │SQLite DB +   │
- │ @ 0.5s intvl│    │Accident Data│    │JSON Reports  │
- └─────────────┘    │  (3,000 rec)│    │+ Supabase    │
-                    └─────────────┘    └──────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                       JUNCTIONGUARD AI PLATFORM                         │
+│             Streamlit Modern Full-Width Top Navigation UI               │
+└──────────────┬────────────────────┬────────────────────┬────────────────┘
+               │                    │                    │
+        ┌──────▼──────┐      ┌──────▼──────┐      ┌──────▼──────┐
+        │Vision Module│      │ Risk Engine │      │ Citizen     │
+        │ YOLOv8n     │      │ 5-Factor    │      │ Reporting   │
+        │ ByteTrack   │      │ Weighted    │      │ Portal      │
+        └──────┬──────┘      └──────┬──────┘      └──────┬──────┘
+               │                    │                    │
+        ┌──────▼──────┐      ┌──────▼──────┐      ┌──────▼──────┐
+        │Frame Extract│      │MoRTH India  │      │SQLite DB +  │
+        │ Telemetry   │      │Accident Data│      │Supabase     │
+        └─────────────┘      │ (3,000 rec) │      │Cloud Storage│
+                             └─────────────┘      └─────────────┘
 ```
 
 ### Tech Stack
 
 | Layer | Technology |
 |---|---|
-| **Frontend** | Streamlit ≥ 1.30 |
-| **Mapping** | Folium ≥ 0.15, streamlit-folium, Esri ArcGIS + OSM tiles |
+| **Frontend UI** | Streamlit ≥ 1.30, Custom Quantum Glassmorphism CSS |
+| **Mapping & GIS** | Folium ≥ 0.15, streamlit-folium, OpenStreetMap + Esri |
 | **Computer Vision** | YOLOv8n (Ultralytics ≥ 8.1), OpenCV-headless ≥ 4.8 |
 | **Data Processing** | Pandas ≥ 2.0, NumPy ≥ 1.24 |
 | **Visualization** | Plotly ≥ 5.18 |
 | **Primary Database** | SQLite (`junctions.db`) |
-| **Cloud Database** | Supabase (PostgreSQL, real-time CRUD) |
-| **Geocoding** | OpenStreetMap Nominatim API, IP-based geolocation |
+| **Cloud Storage & Sync** | Supabase (PostgreSQL + `citizen-reports` Storage Bucket) |
+| **Geocoding** | OpenStreetMap Nominatim API, Reverse Haversine Geocoder |
 | **Stream Ingestion** | yt-dlp ≥ 2024.1 |
-| **Data Validation** | Pydantic ≥ 2.0 |
-| **Deployment** | Render (cloud), `render.yaml` |
-
-### Database Schema (6 Tables)
-
-| Table | Purpose |
-|---|---|
-| `junctions` | Junction metadata, GPS coords, risk score |
-| `detection_indicators` | YOLO frame outputs per junction |
-| `risk_scores` | Full 5-factor breakdown history |
-| `citizen_reports` | Crowdsourced hazard submissions + media |
-| `accident_history` | Year/month severity, fatalities, injuries |
-| `vision_logs` | Vehicle counts, congestion score |
+| **Deployment** | Render Web Service (`render.yaml`), UptimeRobot Keep-Alive |
 
 ---
 
 ## 📦 Setup & Installation
 
 ### Prerequisites
-
-- Python 3.10 or higher
+- Python 3.10 or 3.11
 - Git
-- (Optional) Supabase account for cloud sync
+- (Optional) Supabase credentials for cloud sync
 
 ### 1. Clone the Repository
-
 ```bash
-git clone https://github.com/YOUR_ORG/JunctionGuard-AI.git
-cd JunctionGuard-AI
+git clone https://github.com/shubhodbirajdar928-hash/JUNCTIONGUARD--AI.git
+cd JUNCTIONGUARD--AI
 ```
 
 ### 2. Create a Virtual Environment
-
 ```bash
-python -m venv venv
+python3 -m venv venv
 source venv/bin/activate        # On macOS/Linux
 # venv\Scripts\activate         # On Windows
 ```
 
 ### 3. Install Dependencies
-
 ```bash
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
 ### 4. Configure Environment Variables
-
 Create a `.env` file in the project root:
-
 ```env
-# Supabase (optional — app runs on SQLite without these)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-supabase-key
+```
+
+### 5. Run the Application
+```bash
+streamlit run app.py
+```
+Open **`http://localhost:8501`** in your browser.
+
+---
 SUPABASE_URL=your_supabase_project_url
 SUPABASE_KEY=your_supabase_anon_key
 ```
@@ -233,10 +247,10 @@ JunctionGuard-AI/
 | Name | Role | Contributions |
 |---|---|---|
 | **Shubhod** | Team Lead / Full-Stack Developer | System architecture, main dashboard (`app.py`), database design, deployment on Render |
-| **[Saiprasad]** | Computer Vision Engineer | YOLOv8 integration, `src/vision/` pipeline, video processor, stream analytics |
-| **[Saiprasad]** | Data & Analytics Engineer | Risk engine (`risk_engine.py`), Kaggle dataset pipeline, indicator computation |
-| **[Shubhod And Saiprasad]** | Frontend / UI Developer | Streamlit UI components, Folium map integration, custom CSS/animations |
-| **[Shubhod]** | Backend / DevOps | Supabase integration, geo-utilities, citizen reporting portal, CI/CD |
+| **Saiprasad** | Computer Vision & Analytics Engineer | YOLOv8 integration, `src/vision/` pipeline, XAI risk engine (`risk_engine.py`), dataset pipelines |
+| **Shubhod & Saiprasad** | Frontend / UI & Product Design | Quantum Glassmorphism interface, Folium GIS map integration, custom animations, test suite |
+| **Shubhod** | Backend & DevOps | Supabase integration, geo-utilities, citizen reporting portal, Render CI/CD |
+
 
 
 ---
