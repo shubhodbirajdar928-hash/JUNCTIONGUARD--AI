@@ -594,19 +594,30 @@ def render_hero_mission_banner():
     st.markdown(banner_html, unsafe_allow_html=True)
 
 def render_footer():
-    """Renders the bottom status bar with telemetry stats and copyright."""
+    """Renders a modern, high-end tactical footer status bar."""
     footer_html = (
-        '<div class="tactical-footer">'
-        '<div class="footer-stat">'
-        '<span class="live-dot-green"></span>'
-        '<span>Data Source: <b>Live Sensors + CCTV + Edge Vision</b></span>'
+        '<div style="margin-top: 3.5rem; margin-bottom: 1.5rem; padding: 20px 24px; background: linear-gradient(180deg, rgba(15, 23, 42, 0.75) 0%, rgba(8, 12, 24, 0.95) 100%); border: 1px solid rgba(255, 255, 255, 0.08); border-top: 2px solid rgba(56, 189, 248, 0.5); border-radius: 14px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);">'
+        '<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">'
+        '<div style="display: flex; align-items: center; gap: 12px;">'
+        '<div style="width: 38px; height: 38px; border-radius: 10px; background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(99, 102, 241, 0.2)); border: 1px solid rgba(56, 189, 248, 0.4); display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">🛡️</div>'
+        '<div>'
+        '<div style="font-size: 0.95rem; font-weight: 800; color: #ffffff; font-family: \'Plus Jakarta Sans\', sans-serif; letter-spacing: 0.02em;">JUNCTIONGUARD <span style="color: #38bdf8;">AI</span></div>'
+        '<div style="font-size: 0.72rem; color: #94a3b8; margin-top: 2px;">Next-Gen Urban Safety &amp; Collision Intelligence</div>'
         '</div>'
-        '<div class="footer-stat">'
-        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
-        '<span>AI Architecture: <b>JunctionGuard v2.5</b></span>'
         '</div>'
-        '<div class="footer-stat footer-copyright">'
-        '&copy; 2026 JunctionGuard AI. All Rights Reserved.'
+        '<div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-family: \'JetBrains Mono\', monospace; font-size: 0.75rem;">'
+        '<div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3); padding: 5px 12px; border-radius: 8px; color: #34d399;">'
+        '<span style="width: 7px; height: 7px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981;"></span>'
+        '<span>FEED: <b>Live CCTV + Edge Vision</b></span>'
+        '</div>'
+        '<div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); padding: 5px 12px; border-radius: 8px; color: #38bdf8;">'
+        '<span>⚡ CORE: <b>YOLOv8 + XAI Engine v2.5</b></span>'
+        '</div>'
+        '</div>'
+        '<div style="text-align: right; font-size: 0.73rem; color: #64748b; line-height: 1.5;">'
+        '<div>&copy; 2026 <b>JunctionGuard AI</b>. All Rights Reserved.</div>'
+        '<div style="color: #475569; font-size: 0.68rem;">Built for Safer Urban Intersections</div>'
+        '</div>'
         '</div>'
         '</div>'
     )
