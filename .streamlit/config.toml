@@ -10,7 +10,7 @@ toolbarMode = "viewer"
 
 [theme]
 primaryColor = "#6366f1"
-backgroundColor = "#0a0e1a"
-secondaryBackgroundColor = "#0f1729"
-textColor = "#e2e8f0"
+backgroundColor = "#070a12"
+secondaryBackgroundColor = "#0c101d"
+textColor = "#f1f5f9"
 font = "sans serif"

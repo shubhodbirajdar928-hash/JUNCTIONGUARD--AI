@@ -287,18 +287,28 @@ class TestReportClustering(unittest.TestCase):
                 media_type="photo"
             )
 
-        # Trigger immediate calculation as performed by submission forms
-        recalc_result = engine.compute_junction_risk(test_jnc_id)
-        updated_jnc = fetch_junction_by_id(test_jnc_id)
+        try:
+            # Trigger immediate calculation as performed by submission forms
+            recalc_result = engine.compute_junction_risk(test_jnc_id)
+            updated_jnc = fetch_junction_by_id(test_jnc_id)
 
-        self.assertGreater(recalc_result["risk_score"], initial_score)
-        self.assertAlmostEqual(updated_jnc["risk_score"], recalc_result["risk_score"], places=1)
-        self.assertIn("Citizen Reports", [f["factor"] for f in updated_jnc["contributing_factors"]])
+            self.assertGreater(recalc_result["risk_score"], initial_score)
+            self.assertAlmostEqual(updated_jnc["risk_score"], recalc_result["risk_score"], places=1)
+            self.assertIn("Citizen Reports", [f["factor"] for f in updated_jnc["contributing_factors"]])
 
-        # Verify cluster stats summary
-        stats = get_citizen_cluster_stats(test_jnc_id)
-        self.assertGreaterEqual(stats["cluster_size"], 3)
-        self.assertIn("3 reports in last 30 days, 3 with photo/video evidence", stats["summary_line"])
+            # Verify cluster stats summary
+            stats = get_citizen_cluster_stats(test_jnc_id)
+            self.assertGreaterEqual(stats["cluster_size"], 3)
+            self.assertIn("3 reports in last 30 days, 3 with photo/video evidence", stats["summary_line"])
+        finally:
+            # Clean up test junction and its reports to keep database clean and unique
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM junctions WHERE junction_id = ?", (test_jnc_id,))
+            cur.execute("DELETE FROM citizen_reports WHERE junction_id = ?", (test_jnc_id,))
+            cur.execute("DELETE FROM risk_scores WHERE junction_id = ?", (test_jnc_id,))
+            conn.commit()
+            conn.close()
 
 if __name__ == "__main__":
     unittest.main()

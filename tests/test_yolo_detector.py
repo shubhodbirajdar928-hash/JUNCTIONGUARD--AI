@@ -32,7 +32,7 @@ class TestYoloDetector(unittest.TestCase):
         self.assertIn("pedestrian_count", metrics)
         self.assertIn("raw_detections", metrics)
 
-        expected_classes = {"car", "motorcycle", "bus", "truck", "pedestrian"}
+        expected_classes = {"car", "motorcycle", "bus", "truck", "pedestrian", "bicycle"}
         self.assertEqual(set(metrics["counts"].keys()), expected_classes)
 
     def test_video_traffic_detector_processing(self):

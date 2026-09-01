@@ -43,6 +43,8 @@ class JunctionRecord(BaseModel):
             "name": self.name,
             "lat": self.lat,
             "lon": self.lon,
+            "city": self.city,
+            "state": self.state,
             "risk_score": round(self.risk_score, 1) if self.risk_score is not None else None,
             "risk_level": self.risk_level or self.calculate_risk_level(self.risk_score),
             "contributing_factors": self.contributing_factors,
