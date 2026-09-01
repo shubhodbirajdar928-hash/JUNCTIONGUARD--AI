@@ -24,7 +24,7 @@ REPORTS_JSON_PATH = os.path.join(REPORTS_DIR, "reports.json")
 REPORTS_INDEX_JSON_PATH = os.path.join(REPORTS_DIR, "reports_index.json")
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -472,6 +472,16 @@ def save_risk_score(
             WHERE junction_id = ?
         """, (risk_score, risk_level, factors_json, now_str, junction_id))
 
+        if cursor.rowcount == 0:
+            cursor.execute("""
+                INSERT OR REPLACE INTO junctions
+                (junction_id, name, lat, lon, city, state, risk_score, risk_level, contributing_factors, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                junction_id, junction_id, 18.5204, 73.8567, "India", "India",
+                risk_score, risk_level, factors_json, now_str
+            ))
+
         conn.commit()
         success = True
     except Exception as e:
@@ -826,6 +836,47 @@ def update_junction_risk(
 ):
     """Update risk score and contributing factors for a junction (delegates to save_risk_score)."""
     return save_risk_score(junction_id, risk_score, factors, component_scores=component_scores)
+
+def upsert_custom_junction(
+    junction_id: str,
+    name: str,
+    lat: float,
+    lon: float,
+    city: str = "India",
+    state: str = "India"
+) -> Dict[str, Any]:
+    """Ensures a custom or newly reported location exists as a first-class node in `junctions`."""
+    init_db()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    cursor.execute("SELECT * FROM junctions WHERE junction_id = ?", (junction_id,))
+    existing = cursor.fetchone()
+
+    if existing:
+        cursor.execute("""
+            UPDATE junctions
+            SET name = ?, lat = ?, lon = ?, city = ?, state = ?, last_updated = ?
+            WHERE junction_id = ?
+        """, (name, float(lat), float(lon), city, state, now_str, junction_id))
+    else:
+        init_factors = [
+            {"factor": "Citizen Hazard Reports", "weight": 0.50},
+            {"factor": "Estimated Peak Traffic Density", "weight": 0.30},
+            {"factor": "Pedestrian Hazard Exposure", "weight": 0.20}
+        ]
+        cursor.execute("""
+            INSERT OR REPLACE INTO junctions
+            (junction_id, name, lat, lon, city, state, risk_score, risk_level, contributing_factors, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            junction_id, name, float(lat), float(lon), city, state,
+            55.0, "MEDIUM", json.dumps(init_factors), now_str
+        ))
+    conn.commit()
+    conn.close()
+    return fetch_junction_by_id(junction_id)
 
 if __name__ == "__main__":
     init_db()
