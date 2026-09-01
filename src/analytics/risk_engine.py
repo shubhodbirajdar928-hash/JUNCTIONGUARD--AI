@@ -147,7 +147,7 @@ def compute_citizen_report_cluster(
         }
 
     # Step 2: Anti-abuse deduplication
-    # Step 2: Anti-abuse deduplication (only collapse instant accidental double-clicks within 10s)
+    # Step 2: Anti-abuse deduplication (collapse duplicate reports from same reporter within 10 minutes)
     grouped_by_reporter: Dict[str, List[Tuple[datetime, Dict[str, Any]]]] = {}
     for ts, r in recent_reports:
         rep_name = str(r.get("reporter_name") or "anonymous").strip().lower()
@@ -165,9 +165,8 @@ def compute_citizen_report_cluster(
                 current_cluster.append((ts, r))
             else:
                 last_ts = current_cluster[-1][0]
-                diff_secs = abs((ts - last_ts).total_seconds())
-                # Only deduplicate if identical report submitted within 10 seconds
-                if diff_secs <= 10 and r.get("description") == current_cluster[-1][1].get("description"):
+                diff_mins = abs((ts - last_ts).total_seconds()) / 60.0
+                if diff_mins <= 10.0:
                     current_cluster.append((ts, r))
                 else:
                     deduplicated.append(_resolve_duplicate_cluster(current_cluster))
@@ -175,7 +174,7 @@ def compute_citizen_report_cluster(
         if current_cluster:
             deduplicated.append(_resolve_duplicate_cluster(current_cluster))
 
-    # Step 3: Weight reports based on media and reported severity
+    # Step 3: Weight reports based on media evidence (Video=3, Photo=2, Text=1)
     points_map = {"video": 3, "photo": 2, "text": 1}
     photo_count = 0
     video_count = 0
@@ -184,8 +183,7 @@ def compute_citizen_report_cluster(
 
     for rep in deduplicated:
         m_tier = classify_report_media(rep)
-        sev = int(rep.get("severity") or 3)
-        pts = points_map[m_tier] + max(0, sev - 2)
+        pts = points_map[m_tier]
         total_points += pts
         if m_tier == "video":
             video_count += 1
@@ -197,8 +195,8 @@ def compute_citizen_report_cluster(
     cluster_size = len(deduplicated)
     media_count = photo_count + video_count
 
-    # Step 4: Normalize to 0-100 scale (5+ severe reports or 10+ weighted points = 100)
-    normalized_score = round(min(100.0, (total_points / 8.0) * 100.0), 1)
+    # Step 4: Normalize to 0-100 scale (10+ weighted points = 100)
+    normalized_score = round(min(100.0, (total_points / 10.0) * 100.0), 1)
 
     summary_line = (
         f"{cluster_size} {'report' if cluster_size == 1 else 'reports'} in last 30 days, "
