@@ -618,12 +618,30 @@ def inject_custom_styles():
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-        /* ── Hide Streamlit default header/footer ── */
+        /* ── Hide Streamlit default header/footer & Sidebar ── */
         #MainMenu { visibility: hidden !important; display: none !important; }
         header[data-testid="stHeader"] { visibility: hidden !important; display: none !important; }
         div[data-testid="stToolbar"] { visibility: hidden !important; display: none !important; }
         footer { visibility: hidden !important; display: none !important; }
         .stDeployButton { visibility: hidden !important; display: none !important; }
+
+        /* ── Completely Hide Sidebar on All Browsers (Safari & Chrome) ── */
+        section[data-testid="stSidebar"],
+        div[data-testid="stSidebar"],
+        button[data-testid="stSidebarCollapsedControl"],
+        div[data-testid="collapsedControl"],
+        [data-testid="stSidebarNav"],
+        [data-testid="stSidebarUserContent"],
+        [data-testid="stSidebarHeader"] {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            position: absolute !important;
+            left: -9999px !important;
+        }
 
         /* ── Modern Obsidian Canvas ── */
         html, body, [class*="css"], .stApp {

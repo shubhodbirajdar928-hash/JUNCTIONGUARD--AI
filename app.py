@@ -162,7 +162,7 @@ st.set_page_config(
     page_title="JunctionGuard AI | Road Safety Platform",
     page_icon="🛡️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # Inject Modern Interface Design System
@@ -193,93 +193,28 @@ nav_aliases = {
     "Citizen Hazard Reporting": "Citizen Reports"
 }
 
-# ── Sidebar Navigation & Controls ──
-with st.sidebar:
-    st.markdown("""
-    <div style="padding: 10px 0 20px 0; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 20px;">
-        <div style="display:flex; align-items:center; gap:12px;">
-            <div class="brand-shield-logo" style="width:38px; height:38px;"></div>
-            <div>
-                <div style="font-family:'Plus Jakarta Sans', sans-serif; font-size:1.15rem; font-weight:800; color:#ffffff; letter-spacing:-0.02em;">JunctionGuard <span style="color:#38bdf8;">AI</span></div>
-                <div style="font-size:0.70rem; color:#94a3b8; font-family:'JetBrains Mono', monospace;">ROAD SAFETY PLATFORM</div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+# ── Navigation State Management ──
+if "app_navigation" not in st.session_state:
+    st.session_state["app_navigation"] = "Command Center"
 
-    if "app_sidebar_navigation" not in st.session_state:
-        st.session_state["app_sidebar_navigation"] = "Command Center"
+# Apply any pending programmatic navigation
+_pending_nav = st.session_state.pop("_pending_nav", None)
+if _pending_nav:
+    mapped_target = nav_aliases.get(_pending_nav, _pending_nav)
+    if mapped_target in nav_options:
+        st.session_state["app_navigation"] = mapped_target
 
-    # Map legacy state if needed
-    current_raw = st.session_state.get("app_sidebar_navigation", "Command Center")
-    if current_raw in nav_aliases:
-        st.session_state["app_sidebar_navigation"] = nav_aliases[current_raw]
+sidebar_nav = st.session_state.get("app_navigation", "Command Center")
+if sidebar_nav in nav_aliases:
+    sidebar_nav = nav_aliases[sidebar_nav]
+    st.session_state["app_navigation"] = sidebar_nav
 
-    # Apply any pending programmatic navigation BEFORE the widget is instantiated
-    _pending_nav = st.session_state.pop("_pending_nav", None)
-    if _pending_nav:
-        mapped_target = nav_aliases.get(_pending_nav, _pending_nav)
-        if mapped_target in nav_options:
-            st.session_state["app_sidebar_navigation"] = mapped_target
-
-    _current = st.session_state.get("app_sidebar_navigation", "Command Center")
-    _nav_index = nav_options.index(_current) if _current in nav_options else 0
-
-    sidebar_nav = st.radio(
-        "NAVIGATION",
-        options=nav_options,
-        index=_nav_index,
-        format_func=lambda x: {
-            "Command Center": "🏠  Command Center",
-            "Junction Radar": "🗺️  Junction Radar",
-            "Live Vision": "📹  Live Vision",
-            "XAI Analysis": "🧠  XAI Analysis",
-            "Fleet Analytics": "📊  Fleet Analytics",
-            "Citizen Reports": "👥  Citizen Reports"
-        }.get(x, x),
-        key="app_sidebar_navigation",
-        label_visibility="collapsed"
-    )
-
-    st.markdown("<div style='margin-top: 18px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 18px;'></div>", unsafe_allow_html=True)
-
-    # Junction Selector Dropdown
-    junctions_raw = fetch_all_junctions()
-    jnc_select_options = ["All Junctions"] + [j["name"] for j in junctions_raw]
-
-    if "active_selected_junction" not in st.session_state:
-        st.session_state["active_selected_junction"] = "All Junctions"
-
-    cur_sel = st.session_state.get("active_selected_junction", "All Junctions")
-    sel_idx = jnc_select_options.index(cur_sel) if cur_sel in jnc_select_options else 0
-
-    sel_key = f"focus_jnc_picker_{st.session_state.get('active_selected_junction', 'all')}"
-    sidebar_selected_jnc = st.selectbox(
-        "FOCUS JUNCTION",
-        options=jnc_select_options,
-        index=sel_idx,
-        key=sel_key
-    )
-    if sidebar_selected_jnc != st.session_state.get("active_selected_junction"):
-        st.session_state["active_selected_junction"] = sidebar_selected_jnc
-        st.rerun()
-
-    # Time Range Dropdown
-    sidebar_time_range = st.selectbox("TIME RANGE", options=["Real-Time Stream", "Last 24 Hours", "Last 7 Days", "Last 30 Days"], index=0)
-
-    # Risk Filter Multiselect
-    risk_filter = st.multiselect(
-        "FILTER RISK SEVERITY",
-        options=["HIGH", "MEDIUM", "LOW"],
-        default=["HIGH", "MEDIUM", "LOW"]
-    )
-
-    st.markdown("""
-    <div style="margin-top: 32px; padding: 16px; background: #0c101e; border: 1px solid rgba(255,255,255,0.08); border-radius: 14px;">
-        <div style="font-size: 0.84rem; font-weight: 700; color: #ffffff;">JunctionGuard AI v2.5</div>
-        <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 4px; line-height: 1.4;">Autonomous road safety &amp; multi-factor explainable AI surveillance system.</div>
-    </div>
-    """, unsafe_allow_html=True)
+# Global Filters / State (retained for view compatibility)
+if "active_selected_junction" not in st.session_state:
+    st.session_state["active_selected_junction"] = "All Junctions"
+sidebar_selected_jnc = st.session_state.get("active_selected_junction", "All Junctions")
+sidebar_time_range = "Real-Time Stream"
+risk_filter = ["HIGH", "MEDIUM", "LOW"]
 
 # Render Top Tactical Navigation Bar
 render_navbar(sidebar_nav)
@@ -301,7 +236,7 @@ for col, opt in zip(nav_cols, nav_options):
         btn_type = "primary" if is_active else "secondary"
         if st.button(tab_icons[opt], key=f"top_nav_btn_{opt}", use_container_width=True, type=btn_type):
             if sidebar_nav != opt:
-                st.session_state["_pending_nav"] = opt
+                st.session_state["app_navigation"] = opt
                 st.session_state["_scroll_to_top"] = True
                 st.rerun()
 
