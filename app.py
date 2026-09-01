@@ -192,23 +192,16 @@ def render_surveillance_folium_map(base_view_mode: str, height: int = 380, key_p
         map_zoom = 15
     else:
         map_junctions = [j for j in filtered_junctions if j["risk_level"] in risk_filter]
-        
-        # Check if the map junctions span multiple cities/locations
-        cities = {j.get("city") for j in map_junctions if j.get("city")}
-        if len(cities) > 1:
-            # Multi-city view: Center on India and zoom out so all are visible
-            map_center = [20.5937, 78.9629]
-            map_zoom = 5
+        pune_jnc = next((j for j in map_junctions if "Pune" in j.get("city", "") or "Shivaji" in j["name"]), None)
+        if pune_jnc:
+            map_center = [18.5204, 73.8567]
+            map_zoom = 11
         elif map_junctions:
-            # Single-city view: Center on the average coordinate of those junctions
-            avg_lat = sum(j["lat"] for j in map_junctions) / len(map_junctions)
-            avg_lon = sum(j["lon"] for j in map_junctions) / len(map_junctions)
-            map_center = [avg_lat, avg_lon]
+            map_center = [map_junctions[0]["lat"], map_junctions[0]["lon"]]
             map_zoom = 11
         else:
-            # Fallback to India center
-            map_center = [20.5937, 78.9629]
-            map_zoom = 5
+            map_center = [18.5204, 73.8567]
+            map_zoom = 6
 
     m = folium.Map(
         location=map_center,
@@ -919,18 +912,10 @@ elif sidebar_nav == "Citizen Hazard Reporting":
             initial_lon = float(st.session_state["tab_picked_lng"])
             initial_zoom = 15
         else:
-            # Check if a junction is selected in the dropdown
-            selected_drop = st.session_state.get("tab_select_junction_dropdown")
-            selected_jnc_record = next((j for j in all_jnc_list if j["name"] == selected_drop), None)
-            if selected_jnc_record:
-                initial_lat = selected_jnc_record["lat"]
-                initial_lon = selected_jnc_record["lon"]
-                initial_zoom = 14
-            else:
-                pune_jnc = next((j for j in all_jnc_list if "Pune" in j.get("city", "")), None)
-                initial_lat = pune_jnc['lat'] if pune_jnc else (all_jnc_list[0]['lat'] if all_jnc_list else 18.5204)
-                initial_lon = pune_jnc['lon'] if pune_jnc else (all_jnc_list[0]['lon'] if all_jnc_list else 73.8567)
-                initial_zoom = 12
+            pune_jnc = next((j for j in all_jnc_list if "Pune" in j.get("city", "") or "Shivaji" in j["name"]), None)
+            initial_lat = pune_jnc['lat'] if pune_jnc else (all_jnc_list[0]['lat'] if all_jnc_list else 18.5204)
+            initial_lon = pune_jnc['lon'] if pune_jnc else (all_jnc_list[0]['lon'] if all_jnc_list else 73.8567)
+            initial_zoom = 12
 
         m_picker = folium.Map(
             location=[initial_lat, initial_lon],
@@ -1203,7 +1188,6 @@ elif sidebar_nav == "Citizen Hazard Reporting":
             for k in [
                 "tab_picked_lat", "tab_picked_lng",
                 "selected_junction_name_val", "tab_select_junction_dropdown",
-                "tab_custom_loc_input", "tab_map_search_txt"
             ]:
                 st.session_state.pop(k, None)
 
@@ -1247,12 +1231,9 @@ elif sidebar_nav == "Citizen Hazard Reporting":
             else:
                 st.session_state["tab_select_junction_dropdown"] = loc_options[0]
 
-        sel_idx = loc_options.index(st.session_state["tab_select_junction_dropdown"]) if "tab_select_junction_dropdown" in st.session_state and st.session_state["tab_select_junction_dropdown"] in loc_options else 0
-
         selected_option = st.selectbox(
             "Select Junction / Location*",
             options=loc_options,
-            index=sel_idx,
             key="tab_select_junction_dropdown",
             on_change=on_junction_dropdown_change
         )
@@ -1266,7 +1247,7 @@ elif sidebar_nav == "Citizen Hazard Reporting":
         else:
             selected_jnc_name = selected_option
 
-        rep_name = st.text_input("Reporter Name / Designation", placeholder="e.g. Traffic Marshal / Resident (Optional)", key="tab_reporter_name_input")
+        rep_name = st.text_input("Reporter Name / Designation", placeholder="e.g. Traffic Marshal / Resident (Optional)")
 
         issue_categories = [
             "Pothole / Damaged Road Surface",
@@ -1276,24 +1257,23 @@ elif sidebar_nav == "Citizen Hazard Reporting":
             "Near-Miss Pedestrian Crossing",
             "Other (Specify below)"
         ]
-        rep_issue_sel = st.selectbox("Issue Category", issue_categories, key="tab_issue_cat_select")
+        rep_issue_sel = st.selectbox("Issue Category", issue_categories)
 
         custom_issue = ""
         if rep_issue_sel == "Other (Specify below)":
-            custom_issue = st.text_input("Specify Custom Issue Category*", placeholder="e.g. Waterlogging, Fallen Tree, Construction Obstruction...", key="tab_custom_issue_input")
+            custom_issue = st.text_input("Specify Custom Issue Category*", placeholder="e.g. Waterlogging, Fallen Tree, Construction Obstruction...")
 
-        rep_sev = st.slider("Hazard Severity (1 = Minor, 5 = Severe Hazard)", 1, 5, 3, key="tab_sev_slider")
-        rep_desc = st.text_area("Detailed Description", placeholder="Describe exact location, lane blockages, or timing...", key="tab_desc_text")
+        rep_sev = st.slider("Hazard Severity (1 = Minor, 5 = Severe Hazard)", 1, 5, 3)
+        rep_desc = st.text_area("Detailed Description", placeholder="Describe exact location, lane blockages, or timing...")
 
         uploaded_evidence = st.file_uploader(
             "Upload Photo or Video Evidence (Optional)",
-            type=["jpg", "png", "jpeg", "mp4", "mov", "avi", "webm"],
-            key="tab_evidence_uploader"
+            type=["jpg", "png", "jpeg", "mp4", "mov", "avi", "webm"]
         )
 
         tab_btn1, tab_btn2 = st.columns([3, 1])
         with tab_btn1:
-            submit_btn = st.button("🚨 Submit Hazard Report", use_container_width=True, type="primary", key="tab_submit_hazard_btn")
+            submit_btn = st.button("🚨 Submit Hazard Report", use_container_width=True, type="primary")
         with tab_btn2:
             st.button("🔄 Reset", use_container_width=True, on_click=_reset_tab_form, key="tab_reset_form_btn")
 
@@ -1306,37 +1286,6 @@ elif sidebar_nav == "Citizen Hazard Reporting":
                 final_jnc_name = selected_jnc_name.strip()
                 final_desc = rep_desc.strip() if rep_desc.strip() else f"Road hazard reported at {final_jnc_name}."
                 target_id = jnc_names.get(final_jnc_name, f"J-CUSTOM-{uuid.uuid4().hex[:6].upper()}")
-
-                # If this is a custom location, automatically register it in the database junctions table
-                if target_id not in jnc_names.values():
-                    p_lat = st.session_state.get("tab_picked_lat")
-                    p_lon = st.session_state.get("tab_picked_lng")
-                    if p_lat is None or p_lon is None:
-                        from src.geo_utils import forward_geocode_location
-                        geo_res = forward_geocode_location(final_jnc_name)
-                        if geo_res:
-                            p_lat, p_lon, _ = geo_res
-                        else:
-                            p_lat, p_lon = 18.5204, 73.8567
-                    
-                    parts = [p.strip() for p in final_jnc_name.split(",")]
-                    city_name = parts[-1] if len(parts) > 1 else "Custom City"
-
-                    from src.database import get_db_connection
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO junctions 
-                        (junction_id, name, lat, lon, city, state, risk_score, risk_level, contributing_factors, last_updated)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        target_id, final_jnc_name, float(p_lat), float(p_lon), city_name, "India",
-                        float(rep_sev * 15.0), "HIGH" if rep_sev >= 4 else ("MEDIUM" if rep_sev >= 3 else "LOW"),
-                        json.dumps([{"factor": "Citizen Hazard Reports", "weight": 1.0}]),
-                        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    ))
-                    conn.commit()
-                    conn.close()
 
                 # Determine final issue category
                 if rep_issue_sel == "Other (Specify below)":
@@ -1356,15 +1305,18 @@ elif sidebar_nav == "Citizen Hazard Reporting":
                     media_dest = os.path.join(reports_dir, saved_filename)
                     
                     try:
+                        # Extract full raw bytes using getvalue() to guarantee full uncorrupted file payload
                         file_bytes = uploaded_evidence.getvalue()
                         with open(media_dest, "wb") as f:
                             f.write(file_bytes)
                         saved_relative_path = os.path.join("data", "citizen_reports", saved_filename)
 
+                        # Determine correct MIME content-type
                         guessed_mime = mimetypes.guess_type(uploaded_evidence.name)[0]
                         if not guessed_mime:
                             guessed_mime = "video/mp4" if file_ext in [".mp4", ".mov", ".avi", ".webm"] else "image/jpeg"
 
+                        # Supabase Storage Upload
                         from src.supabase_client import upload_citizen_media_supabase
                         media_url = upload_citizen_media_supabase(
                             file_bytes,
@@ -1387,20 +1339,17 @@ elif sidebar_nav == "Citizen Hazard Reporting":
                     media_type=media_type_val
                 )
 
-                # Trigger Explainable Risk Engine recalculation upon report submission
+                # Immediately trigger Explainable Risk Engine recalculation upon report submission
                 try:
                     risk_engine.compute_junction_risk(target_id)
                 except Exception as rx:
                     print(f"[Risk Engine Recalculation Note] {rx}")
                 
                 # Clear/reset picked map location and form session state
-                for k in [
-                    "tab_picked_lat", "tab_picked_lng",
-                    "selected_junction_name_val", "tab_select_junction_dropdown",
-                    "tab_custom_loc_input", "tab_reporter_name_input",
-                    "tab_custom_issue_input", "tab_desc_text"
-                ]:
-                    st.session_state.pop(k, None)
+                st.session_state.pop("tab_picked_lat", None)
+                st.session_state.pop("tab_picked_lng", None)
+                st.session_state.pop("selected_junction_name_val", None)
+                st.session_state.pop("tab_select_junction_dropdown", None)
 
                 evidence_note = " 📹 Video evidence attached." if uploaded_evidence is not None else ""
                 st.session_state["submitted_report_msg"] = f"🎉 **Hazard Report Successfully Submitted for '{final_jnc_name}'!**{evidence_note}"
@@ -1410,11 +1359,8 @@ elif sidebar_nav == "Citizen Hazard Reporting":
     st.write("#### 🗂️ Recent Citizen & Officer Reports")
     reports = fetch_citizen_reports()
     if reports:
-        all_j_records = fetch_all_junctions()
-        jnc_id_to_name = {j["junction_id"]: j["name"] for j in all_j_records}
-        for rep in reports[:15]: # Show top 15 recent
+        for rep in reports[:10]: # Show top 10 recent
             j_id = rep.get("junction_id", "")
-            j_name_display = jnc_id_to_name.get(j_id) or rep.get("junction_name") or j_id
             issue = rep.get("issue_type", "Hazard")
             sev = rep.get("severity", 3)
             rep_by = rep.get("reporter_name", "Anonymous")
@@ -1435,7 +1381,7 @@ elif sidebar_nav == "Citizen Hazard Reporting":
             st.markdown(f"""
             <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <strong>📍 {j_name_display} - {issue}</strong>
+                    <strong>📍 {j_id} - {issue}</strong>
                     <span style="font-size: 0.8rem; background: #1e293b; padding: 2px 8px; border-radius: 4px; color: #94a3b8;">{sev_badge}</span>
                 </div>
                 <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 4px;">Reporter: {rep_by} | {ts}</div>
