@@ -1,7 +1,7 @@
 """
-JunctionGuard AI - OMNIKON Hackathon Dashboard
+JunctionGuard AI - Command Center
 Explainable AI System for Scoring Accident-Prone Road Junctions in India.
-Features Streamlit frontend, interactive Folium map with pulsing red halos for high-risk zones,
+Features Minimalist Streamlit frontend, interactive Folium map with pulsing radar halos,
 YOLOv8 vision analytics preview, and multi-factor explainability breakdowns.
 """
 
@@ -34,7 +34,6 @@ import streamlit.components.v1 as st_components
 from src.analytics.data_loader import compute_historical_risk_score, load_accident_dataset
 from src.vision.stream_processor import StreamProcessor
 
-import importlib
 import app.components as app_comp
 importlib.reload(app_comp)
 from app.components import (
@@ -45,7 +44,8 @@ from app.components import (
     get_risk_badge_html,
     render_navbar,
     render_dashboard_overview_header,
-    render_footer
+    render_footer,
+    get_svg_icon
 )
 
 # ── Handle Browser GPS Callback (from HTML5 Geolocation Button) ──
@@ -58,9 +58,10 @@ if "geo_lat" in st.query_params and "geo_lng" in st.query_params:
         st.session_state["tab_picked_lng"] = g_lng
         st.session_state["sentinel_picked_lat"] = g_lat
         st.session_state["sentinel_picked_lng"] = g_lng
-        st.session_state["_pending_nav"] = nav_target  # applied before widget renders
+        st.session_state["_pending_nav"] = nav_target
+        st.session_state["app_sidebar_navigation"] = nav_target
         _all_j = fetch_all_junctions()
-        near_j, _ = find_nearest_junction(g_lat, g_lng, _all_j)
+        near_j, _ = find_nearest_junction(g_lat, g_lng, _all_j, threshold_km=0.5)
         addr = near_j['name'] if near_j else reverse_geocode_location(g_lat, g_lng)
         st.session_state["selected_junction_name_val"] = addr
         st.session_state["tab_select_junction_dropdown"] = addr
@@ -78,23 +79,24 @@ risk_engine = ExplainableRiskEngine()
 
 st.set_page_config(
     page_title="JunctionGuard AI | Command Center",
-    page_icon="🚨",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Inject Stitch Tactical Vision Interface Design System
+# Inject Minimalist Dark Design System
 inject_custom_styles()
 
 # ── Sidebar Navigation & Controls ──
 with st.sidebar:
-    st.markdown("""
-    <div style="padding: 6px 0 16px 0; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 16px;">
+    st.markdown(f"""
+    <div style="padding: 6px 0 16px 0; border-bottom: 1px solid rgba(255,255,255,0.06); margin-bottom: 16px;">
         <div style="display:flex; align-items:center; gap:10px;">
-            <div class="brand-shield-logo" style="width:34px; height:34px;"></div>
+            <div class="brand-shield-logo" style="width:32px; height:32px;">
+                {get_svg_icon("shield_logo", size=18)}
+            </div>
             <div>
-                <div style="font-family:'Space Grotesk', sans-serif; font-size:1.05rem; font-weight:800; color:#ffffff;">JunctionGuard</div>
-                <div style="font-size:0.65rem; color:#9ca3af; font-family:'JetBrains Mono', monospace;">AI SURVEILLANCE SYSTEM</div>
+                <div style="font-family:'Space Grotesk', sans-serif; font-size:1.02rem; font-weight:700; color:#ffffff; letter-spacing:-0.02em;">JunctionGuard</div>
+                <div style="font-size:0.62rem; color:#94a3b8; font-family:'JetBrains Mono', monospace; letter-spacing:0.04em;">AI SURVEILLANCE SUITE</div>
             </div>
         </div>
     </div>
@@ -111,7 +113,6 @@ with st.sidebar:
     # Apply any pending programmatic navigation BEFORE the widget is instantiated
     _pending_nav = st.session_state.pop("_pending_nav", None)
     _nav_index = nav_options.index(_pending_nav) if _pending_nav in nav_options else 0
-    # Preserve current selection if no pending nav requested
     if _pending_nav is None and "app_sidebar_navigation" in st.session_state:
         _current = st.session_state["app_sidebar_navigation"]
         if _current in nav_options:
@@ -121,26 +122,19 @@ with st.sidebar:
         "NAVIGATION",
         options=nav_options,
         index=_nav_index,
-        format_func=lambda x: {
-            "Dashboard": "📊  Dashboard",
-            "Interactive Alert Map": "🗺️  Interactive Alert Map",
-            "Explainability & Factor Breakdown": "⚖️  Explainability & Factor Breakdown",
-            "Live CCTV Vision Analytics": "📹  Live CCTV Vision Analytics",
-            "Citizen Hazard Reporting": "🚨  Citizen Hazard Reporting"
-        }.get(x, x),
         key="app_sidebar_navigation",
         label_visibility="collapsed"
     )
 
-    st.markdown("<div style='margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 14px;'></div>", unsafe_allow_html=True)
 
     # Junction Selector Dropdown
     junctions_raw = fetch_all_junctions()
     jnc_select_options = ["All Junctions"] + [j["name"] for j in junctions_raw]
-    sidebar_selected_jnc = st.selectbox("JUNCTION SELECTOR", options=jnc_select_options, index=0)
+    sidebar_selected_jnc = st.selectbox("JUNCTION SCOPE", options=jnc_select_options, index=0)
 
     # Time Range Dropdown
-    sidebar_time_range = st.selectbox("TIME RANGE", options=["Last 24 Hours", "Last 7 Days", "Last 30 Days", "Live Stream"], index=0)
+    sidebar_time_range = st.selectbox("TIME HORIZON", options=["Last 24 Hours", "Last 7 Days", "Last 30 Days", "Live Telemetry"], index=0)
 
     # Risk Filter Multiselect
     risk_filter = st.multiselect(
@@ -149,26 +143,28 @@ with st.sidebar:
         default=["HIGH", "MEDIUM", "LOW"]
     )
 
-    st.markdown("""
-    <div style="margin-top: 30px; padding: 12px; background: #12151a; border: 1px solid rgba(249,115,22,0.3); border-radius: 8px; display: flex; align-items: center; gap: 10px;">
-        <div class="brand-shield-logo" style="width:34px; height:34px;"></div>
+    st.markdown(f"""
+    <div style="margin-top: 28px; padding: 12px; background: #0f131a; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; display: flex; align-items: center; gap: 10px;">
+        <div style="display:flex; align-items:center; color:#f97316;">
+            {get_svg_icon("shield_logo", size=20)}
+        </div>
         <div>
-            <div style="font-size: 0.82rem; font-weight: 700; color: #ffffff;">JunctionGuard AI</div>
-            <div style="font-size: 0.68rem; color: #9ca3af;">Roads Safer, Cities Smarter.</div>
+            <div style="font-size: 0.80rem; font-weight: 600; color: #ffffff;">JunctionGuard Core</div>
+            <div style="font-size: 0.68rem; color: #94a3b8;">Autonomous Road Intelligence</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-# Render Top Tactical Navigation Bar
+# Render Top Minimalist Navigation Bar
 render_navbar(sidebar_nav)
 
 # Render Subheader Overview Bar
 nav_subtitles = {
-    "Dashboard": "Real-time Junction Risk Surveillance System",
-    "Interactive Alert Map": "Real-time Spatial Hazard & Risk Density Surveillance",
-    "Explainability & Factor Breakdown": "Transparent AI Scoring & Contributing Factor Weights",
-    "Live CCTV Vision Analytics": "Autonomous Vision Inference & Traffic Anomaly Detection",
-    "Citizen Hazard Reporting": "Crowdsourced Hazard Verification & Community Evidence"
+    "Dashboard": "Real-Time Spatial Risk Surveillance & Vision Stream",
+    "Interactive Alert Map": "Spatial Hazard Density & Junction Heatmap Surveillance",
+    "Explainability & Factor Breakdown": "Transparent AI Scoring & Multi-Factor Weight Attribution",
+    "Live CCTV Vision Analytics": "Autonomous YOLOv8 Inference & Traffic Anomaly Detection",
+    "Citizen Hazard Reporting": "Civic Incident Verification & Crowdsourced Intelligence"
 }
 render_dashboard_overview_header(title=sidebar_nav, subtitle=nav_subtitles.get(sidebar_nav, "Real-time Junction Risk Surveillance System"))
 
@@ -185,7 +181,6 @@ def render_surveillance_folium_map(base_view_mode: str, height: int = 380, key_p
     """Reusable interactive map renderer with Esri dark tiles and pulsing radar halos."""
     enable_heatmap = "Heatmap" in base_view_mode
 
-    # When a specific junction is selected in the sidebar, center directly on it with close zoom!
     if selected_jnc_record:
         map_junctions = [selected_jnc_record]
         map_center = [selected_jnc_record["lat"], selected_jnc_record["lon"]]
@@ -218,7 +213,7 @@ def render_surveillance_folium_map(base_view_mode: str, height: int = 380, key_p
     overview_map_css = """
     <style>
     .leaflet-container {
-        background-color: #0a0c0e !important;
+        background-color: #08090d !important;
     }
     .leaflet-tile, .leaflet-pane, .leaflet-tile-pane, .leaflet-tile-container img {
         filter: none !important;
@@ -262,20 +257,20 @@ def render_surveillance_folium_map(base_view_mode: str, height: int = 380, key_p
 
     if "Satellite" in base_view_mode:
         satellite_tile.add_to(m)
-    elif "Street" in base_view_mode:
-        streets_tile.add_to(m)
-    else:
+    elif "Dark" in base_view_mode:
         dark_tile.add_to(m)
+    else:
+        streets_tile.add_to(m)
 
     if enable_heatmap and map_junctions:
         heat_data = [[j["lat"], j["lon"], float(j["risk_score"] or 50.0) / 100.0] for j in map_junctions]
         HeatMap(
             heat_data,
-            radius=32,
-            blur=22,
+            radius=30,
+            blur=20,
             min_opacity=0.45,
             max_zoom=14,
-            gradient={0.2: '#3b82f6', 0.4: '#10b981', 0.6: '#fbbf24', 0.8: '#f97316', 1.0: '#ef4444'}
+            gradient={0.2: '#38bdf8', 0.4: '#10b981', 0.6: '#fbbf24', 0.8: '#f97316', 1.0: '#ef4444'}
         ).add_to(m)
 
     markers_layer = folium.FeatureGroup(name="Junction Markers")
@@ -287,54 +282,73 @@ def render_surveillance_folium_map(base_view_mode: str, height: int = 380, key_p
         level = (j["risk_level"] or "LOW").upper()
 
         if level == "HIGH":
-            halo_cls = "heat-aura-high"
             circle_color = "#ef4444"
             aura_radius = 450
         elif level == "MEDIUM":
-            halo_cls = "heat-aura-med"
             circle_color = "#f59e0b"
             aura_radius = 320
         else:
-            halo_cls = "heat-aura-low"
             circle_color = "#10b981"
             aura_radius = 200
 
-        # Thermal heat wave aura circle on the junction
+        pulse_html = f"""
+        <div style="position:relative; width:22px; height:22px; display:flex; align-items:center; justify-content:center;">
+            <div style="position:absolute; width:100%; height:100%; border-radius:50%; background:{circle_color}; opacity:0.3; animation:heat-pulse 2s infinite ease-in-out;"></div>
+            <div style="width:10px; height:10px; border-radius:50%; background:{circle_color}; border:2px solid #ffffff; box-shadow:0 0 8px {circle_color};"></div>
+        </div>
+        <style>
+        @keyframes heat-pulse {{
+            0% {{ transform:scale(0.8); opacity:0.8; }}
+            50% {{ transform:scale(1.8); opacity:0.1; }}
+            100% {{ transform:scale(0.8); opacity:0.8; }}
+        }}
+        </style>
+        """
+
         folium.Circle(
             location=[lat, lon],
             radius=aura_radius,
             color=circle_color,
             weight=1,
-            opacity=0.35,
             fill=True,
             fill_color=circle_color,
-            fill_opacity=0.20
+            fill_opacity=0.08
         ).add_to(m)
 
-        marker_html = f'<div class="{halo_cls}"></div>'
-        icon = folium.DivIcon(html=marker_html, icon_size=(30, 30), icon_anchor=(15, 15), class_name="junction-heat-icon")
+        popup_html = f"""
+        <div style="font-family:'Plus Jakarta Sans', sans-serif; font-size:12px; color:#f8fafc; background:#0f131a; padding:12px; border-radius:8px; min-width:200px; border:1px solid rgba(255,255,255,0.1);">
+            <div style="font-size:13px; font-weight:700; color:#ffffff; margin-bottom:4px;">{name}</div>
+            <div style="font-size:11px; color:#94a3b8; margin-bottom:8px;">ID: {j.get('junction_id', 'N/A')}</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <span style="font-size:11px; color:#94a3b8;">Risk Score:</span>
+                <span style="font-weight:700; color:{circle_color}; font-family:'JetBrains Mono', monospace;">{score:.1f} / 100</span>
+            </div>
+            <div style="font-size:10px; color:#64748b; font-family:'JetBrains Mono', monospace;">{lat:.4f}, {lon:.4f}</div>
+        </div>
+        """
+
         folium.Marker(
-            location=[lat, lon],
-            icon=icon,
-            tooltip=f"{name} | {level} Risk ({score:.1f}/100)"
+            [lat, lon],
+            popup=folium.Popup(popup_html, max_width=300),
+            tooltip=f"{name} ({level} - {score:.1f})",
+            icon=folium.DivIcon(html=pulse_html, icon_size=(22, 22), icon_anchor=(11, 11))
         ).add_to(markers_layer)
 
     markers_layer.add_to(m)
+    folium.LayerControl(position="topright", collapsed=True).add_to(m)
 
-    return st_folium(
+    st_folium(
         m,
         width="stretch",
         height=height,
-        key=f"{key_prefix}_overview_map_{base_view_mode}_{sidebar_selected_jnc.replace(' ', '_')}_{round(map_center[0], 3)}_{round(map_center[1], 3)}_{len(map_junctions)}",
-        returned_objects=["last_object_clicked"],
-        return_on_hover=False
+        key=f"{key_prefix}_folium_map_{base_view_mode.replace(' ', '_')}",
+        returned_objects=[]
     )
 
 # ----------------------------------------------------
-# 1. DASHBOARD OVERVIEW (HOME)
+# 1. DASHBOARD OVERVIEW
 # ----------------------------------------------------
 if sidebar_nav == "Dashboard":
-    # Top KPI Summary Cards (Matching Reference Image)
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     if selected_jnc_record:
         total_jnc = 1
@@ -352,11 +366,13 @@ if sidebar_nav == "Dashboard":
         st.markdown(f"""
         <div class="kpi-tactical-card">
             <div>
-                <div class="kpi-label">MONITORED JUNCTIONS</div>
+                <div class="kpi-label">MONITORED NODES</div>
                 <div class="kpi-num">{total_jnc}</div>
-                <div class="kpi-sub" style="color: #f97316;"><span class="live-dot-green"></span> REAL-TIME</div>
+                <div class="kpi-sub" style="color: #f97316;"><span class="live-dot-green"></span> ACTIVE FLEET</div>
             </div>
-            <div class="kpi-icon-wrap kpi-icon-jnc" style="background: rgba(249, 115, 22, 0.12); border: 1px solid rgba(249, 115, 22, 0.35);"></div>
+            <div class="kpi-icon-wrap" style="background: rgba(249, 115, 22, 0.1); border: 1px solid rgba(249, 115, 22, 0.25); color: #f97316;">
+                {get_svg_icon("radar", color="#f97316", size=20)}
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -366,9 +382,11 @@ if sidebar_nav == "Dashboard":
             <div>
                 <div class="kpi-label">HIGH RISK HOTSPOTS</div>
                 <div class="kpi-num" style="color: #f87171;">{high_risk_count}</div>
-                <div class="kpi-sub" style="color: #ef4444;"><span class="live-dot-red"></span> CRITICAL</div>
+                <div class="kpi-sub" style="color: #ef4444;"><span class="live-dot-red"></span> CRITICAL SECTOR</div>
             </div>
-            <div class="kpi-icon-wrap kpi-icon-alert" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.45);"></div>
+            <div class="kpi-icon-wrap" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #ef4444;">
+                {get_svg_icon("alert", color="#ef4444", size=20)}
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -376,11 +394,13 @@ if sidebar_nav == "Dashboard":
         st.markdown(f"""
         <div class="kpi-tactical-card">
             <div>
-                <div class="kpi-label">AVG RISK SCORE</div>
+                <div class="kpi-label">AVG RISK INDEX</div>
                 <div class="kpi-num" style="color: #fbbf24;">{avg_risk_score} <span class="kpi-denom">/100</span></div>
-                <div class="kpi-sub" style="color: #f59e0b;"><span class="live-dot-green"></span> UPDATED</div>
+                <div class="kpi-sub" style="color: #f59e0b;"><span class="live-dot-green"></span> CALIBRATED</div>
             </div>
-            <div class="kpi-icon-wrap kpi-icon-score" style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35);"></div>
+            <div class="kpi-icon-wrap" style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); color: #f59e0b;">
+                {get_svg_icon("chart", color="#f59e0b", size=20)}
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -388,11 +408,13 @@ if sidebar_nav == "Dashboard":
         st.markdown(f"""
         <div class="kpi-tactical-card">
             <div>
-                <div class="kpi-label">CITIZEN REPORTS</div>
+                <div class="kpi-label">CIVIC INCIDENT LOGS</div>
                 <div class="kpi-num" style="color: #34d399;">{total_reports}</div>
-                <div class="kpi-sub" style="color: #10b981;"><span class="live-dot-green"></span> LIVE FEED</div>
+                <div class="kpi-sub" style="color: #10b981;"><span class="live-dot-green"></span> VERIFIED STREAM</div>
             </div>
-            <div class="kpi-icon-wrap kpi-icon-reports" style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35);"></div>
+            <div class="kpi-icon-wrap" style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981;">
+                {get_svg_icon("users", color="#10b981", size=20)}
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -402,71 +424,49 @@ if sidebar_nav == "Dashboard":
     col_map, col_cctv = st.columns([1, 1])
 
     with col_map:
-        # Header with view mode buttons matching reference image
-        map_h_col1, map_h_col2 = st.columns([1, 1])
-        with map_h_col1:
-            st.markdown('<div class="panel-title" style="font-size:0.95rem; font-weight:700; color:#ffffff; letter-spacing:0.04em; text-transform:uppercase; margin-top:6px;">INTERACTIVE RISK MAP</div>', unsafe_allow_html=True)
-        with map_h_col2:
-            base_view_mode = st.selectbox(
-                "Map Mode",
-                options=[
-                    "Heatmap Mode",
-                    "Dark Tactical",
-                    "Satellite Imagery",
-                    "Street Navigation"
-                ],
-                index=0,
-                label_visibility="collapsed",
-                key="dash_map_mode_select"
-            )
-
-        render_surveillance_folium_map(base_view_mode, height=380, key_prefix="dash")
+        st.markdown('<div class="panel-title" style="font-size:0.90rem; font-weight:700; color:#ffffff; letter-spacing:0.04em; text-transform:uppercase; margin-top:6px; margin-bottom:8px;">SPATIAL RISK MAP</div>', unsafe_allow_html=True)
+        render_surveillance_folium_map("Street Navigation", height=380, key_prefix="dash")
 
         st.markdown("""
-        <div style="display:flex; justify-content:space-between; align-items:center; background:#12151a; border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 12px; margin-top:6px; font-size:0.72rem; font-family:'JetBrains Mono', monospace;">
-            <span style="color:#9ca3af;">RISK LEVEL:</span>
-            <span style="display:inline-flex; align-items:center; gap:5px; color:#f87171;"><span class="live-dot-red"></span> HIGH</span>
-            <span style="display:inline-flex; align-items:center; gap:5px; color:#fbbf24;"><span style="width:6px; height:6px; border-radius:50%; background:#f59e0b; display:inline-block;"></span> MEDIUM</span>
-            <span style="display:inline-flex; align-items:center; gap:5px; color:#34d399;"><span style="width:6px; height:6px; border-radius:50%; background:#10b981; display:inline-block;"></span> LOW</span>
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#0f131a; border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:7px 14px; margin-top:6px; font-size:0.72rem; font-family:'JetBrains Mono', monospace;">
+            <span style="color:#94a3b8;">SEVERITY CLASSIFICATION:</span>
+            <span style="display:inline-flex; align-items:center; gap:5px; color:#f87171;"><span class="live-dot-red"></span> HIGH (&ge;70)</span>
+            <span style="display:inline-flex; align-items:center; gap:5px; color:#fbbf24;"><span style="width:6px; height:6px; border-radius:50%; background:#f59e0b; display:inline-block;"></span> MEDIUM (40-69)</span>
+            <span style="display:inline-flex; align-items:center; gap:5px; color:#34d399;"><span style="width:6px; height:6px; border-radius:50%; background:#10b981; display:inline-block;"></span> LOW (&lt;40)</span>
         </div>
         """, unsafe_allow_html=True)
 
     with col_cctv:
-        # Header for CCTV Feed matching reference image
         cctv_h_col1, cctv_h_col2 = st.columns([1, 1])
         with cctv_h_col1:
-            st.markdown('<div class="panel-title" style="font-size:0.95rem; font-weight:700; color:#ffffff; letter-spacing:0.04em; text-transform:uppercase; margin-top:6px;">LIVE CCTV FEED</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-title" style="font-size:0.90rem; font-weight:700; color:#ffffff; letter-spacing:0.04em; text-transform:uppercase; margin-top:6px;">LIVE CCTV SURVEILLANCE FEED</div>', unsafe_allow_html=True)
         with cctv_h_col2:
-            st.markdown('<div style="text-align:right; margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:6px; font-size:0.75rem; font-weight:700; color:#ef4444; font-family:\'JetBrains Mono\', monospace;"><span class="live-dot-red"></span> LIVE</span></div>', unsafe_allow_html=True)
+            st.markdown('<div style="text-align:right; margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:6px; font-size:0.75rem; font-weight:700; color:#ef4444; font-family:\'JetBrains Mono\', monospace;"><span class="live-dot-red"></span> LIVE STREAM</span></div>', unsafe_allow_html=True)
 
         now_str = datetime.now().strftime("%I:%M:%S %p")
-        jnc_label = f"{selected_jnc_record['junction_id']} {selected_jnc_record['name']}" if selected_jnc_record else "J-17 Shivajinagar Junction, Pune"
+        jnc_label = f"{selected_jnc_record['junction_id']} - {selected_jnc_record['name']}" if selected_jnc_record else "J001 - Shivaji Chowk, Pune"
         st.markdown(f"""
-        <div style="display:flex; justify-content:space-between; align-items:center; background:#12151a; border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 12px; margin-bottom:8px; font-size:0.74rem; font-family:'JetBrains Mono', monospace;">
-            <span style="color:#e2e2e5;">JUNCTION ID: <b style="color:#ffffff;">{jnc_label}</b></span>
-            <span style="color:#f97316; font-weight:700;">{now_str}</span>
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#0f131a; border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:7px 14px; margin-bottom:8px; font-size:0.74rem; font-family:'JetBrains Mono', monospace;">
+            <span style="color:#cbd5e1;">CAMERA FEED: <b style="color:#ffffff;">{jnc_label}</b></span>
+            <span style="color:#f97316; font-weight:600;">{now_str}</span>
         </div>
         """, unsafe_allow_html=True)
 
-        # Video stream playback
         sample_video_path = "data/sample_videos/indian_traffic_1.mp4"
         if os.path.exists(sample_video_path):
             st.video(sample_video_path)
         else:
             st.info("CCTV video stream loaded. Connect RTSP stream for live telemetry.")
 
-        # Bottom CCTV controls matching reference image
-        ctrl_col1, ctrl_col2, ctrl_col3, ctrl_col4 = st.columns([1, 1, 1, 3])
+        ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([1, 1, 2])
         with ctrl_col1:
-            st.button("📸", help="Capture Snapshot", key="dash_cctv_snap")
+            st.button("Snapshot", help="Capture Snapshot Frame", key="dash_cctv_snap", use_container_width=True)
         with ctrl_col2:
-            st.button("⏺️", help="Record Incident", key="dash_cctv_rec")
+            st.button("Log Incident", help="Record Incident Tag", key="dash_cctv_rec", use_container_width=True)
         with ctrl_col3:
-            st.button("⛶", help="Fullscreen", key="dash_cctv_full")
-        with ctrl_col4:
-            st.selectbox("Camera", options=["Camera 01 - Northbound", "Camera 02 - East Crossing", "Camera 03 - Pedestrian Refuge"], index=0, label_visibility="collapsed", key="dash_cctv_cam_sel")
+            st.selectbox("Channel", options=["Channel 01 - North Approach", "Channel 02 - East Crossing", "Channel 03 - Pedestrian Refuge"], index=0, label_visibility="collapsed", key="dash_cctv_cam_sel")
 
-    # Bottom Row: 4 Panels matching reference image
+    # Bottom Row: 4 Panels
     st.markdown("<div style='margin-top: 18px;'></div>", unsafe_allow_html=True)
     p1, p2, p3, p4 = st.columns(4)
 
@@ -480,8 +480,8 @@ if sidebar_nav == "Dashboard":
                 label_visibility="collapsed",
                 key="dash_p1_severity_multiselect"
             )
-            st.checkbox("🔥 Accident Density Heatmap", value=True, key="dash_p1_heat_chk")
-            st.checkbox("🛡️ Hazard Conflict Buffers", value=True, key="dash_p1_buf_chk")
+            st.checkbox("Accident Density Heatmap", value=True, key="dash_p1_heat_chk")
+            st.checkbox("Hazard Conflict Buffers", value=True, key="dash_p1_buf_chk")
             st.slider("Heat Intensity Radius", min_value=15, max_value=45, value=28, step=5, key="dash_p1_heat_slider")
             st.selectbox("Safety Buffer Radius", options=["250 Meters", "500 Meters", "1000 Meters"], index=1, key="dash_p1_buf_sel")
 
@@ -489,12 +489,12 @@ if sidebar_nav == "Dashboard":
         with st.container(border=True):
             st.markdown('''
             <div style="font-size: 0.82rem; font-weight: 700; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; font-family:'Space Grotesk', sans-serif;">
-                RISK TREND (LAST 24 HOURS)
+                24H RISK TREND TELEMETRY
             </div>
             <div style="display:flex; gap:10px; font-size:0.68rem; font-family:'JetBrains Mono', monospace; margin-bottom:6px;">
-                <span style="color:#ef4444;">● High Risk</span>
-                <span style="color:#f59e0b;">● Medium Risk</span>
-                <span style="color:#10b981;">● Low Risk</span>
+                <span style="color:#ef4444;">&bull; High Risk</span>
+                <span style="color:#f59e0b;">&bull; Medium Risk</span>
+                <span style="color:#10b981;">&bull; Low Risk</span>
             </div>
             ''', unsafe_allow_html=True)
             trend_df = pd.DataFrame({
@@ -506,44 +506,42 @@ if sidebar_nav == "Dashboard":
 
     with p3:
         with st.container(border=True):
-            st.markdown('''
+            st.markdown(f'''
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
                 <div style="font-size: 0.82rem; font-weight: 700; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em; font-family:'Space Grotesk', sans-serif;">
-                    ALERT SUMMARY
+                    INCIDENT STREAM
                 </div>
-                <span style="font-size:0.72rem; color:#f97316; font-weight:700; font-family:'JetBrains Mono', monospace;">View All</span>
+                <span style="font-size:0.70rem; color:#f97316; font-weight:600; font-family:'JetBrains Mono', monospace;">LIVE LOG</span>
             </div>
             <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px;">
-                <div style="background:rgba(239,68,68,0.10); border:1px solid rgba(239,68,68,0.3); border-radius:6px; padding:7px 10px;">
+                <div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:6px; padding:7px 10px;">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-size:0.74rem; font-weight:700; color:#f87171;">⚠️ High Risk Detected</span>
-                        <span style="font-size:0.64rem; color:#9ca3af; font-family:'JetBrains Mono', monospace;">2 min ago</span>
+                        <span style="font-size:0.74rem; font-weight:600; color:#f87171;">Critical Conflict Zone</span>
+                        <span style="font-size:0.64rem; color:#94a3b8; font-family:'JetBrains Mono', monospace;">2m ago</span>
                     </div>
                     <div style="font-size:0.70rem; color:#cbd5e1; margin-top:2px;">JM Road, Pune</div>
                 </div>
-                <div style="background:rgba(245,158,11,0.10); border:1px solid rgba(245,158,11,0.3); border-radius:6px; padding:7px 10px;">
+                <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:6px; padding:7px 10px;">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-size:0.74rem; font-weight:700; color:#fbbf24;">⚡ Accident Prone Zone</span>
-                        <span style="font-size:0.64rem; color:#9ca3af; font-family:'JetBrains Mono', monospace;">12 min ago</span>
+                        <span style="font-size:0.74rem; font-weight:600; color:#fbbf24;">Hazard Cluster Elevation</span>
+                        <span style="font-size:0.64rem; color:#94a3b8; font-family:'JetBrains Mono', monospace;">12m ago</span>
                     </div>
                     <div style="font-size:0.70rem; color:#cbd5e1; margin-top:2px;">Kharadi Bypass</div>
                 </div>
-                <div style="background:rgba(245,158,11,0.10); border:1px solid rgba(245,158,11,0.3); border-radius:6px; padding:7px 10px;">
+                <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:6px; padding:7px 10px;">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-size:0.74rem; font-weight:700; color:#fbbf24;">🚗 Heavy Traffic Congestion</span>
-                        <span style="font-size:0.64rem; color:#9ca3af; font-family:'JetBrains Mono', monospace;">18 min ago</span>
+                        <span style="font-size:0.74rem; font-weight:600; color:#fbbf24;">Mixed Vehicle Flow Spike</span>
+                        <span style="font-size:0.64rem; color:#94a3b8; font-family:'JetBrains Mono', monospace;">18m ago</span>
                     </div>
                     <div style="font-size:0.70rem; color:#cbd5e1; margin-top:2px;">Hinjewadi Phase 1</div>
                 </div>
             </div>
             ''', unsafe_allow_html=True)
 
-
     with p4:
         with st.container(border=True):
-            st.markdown('<div style="font-size: 0.82rem; font-weight: 700; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; font-family:\'Space Grotesk\', sans-serif;">QUICK ACTIONS</div>', unsafe_allow_html=True)
+            st.markdown('<div style="font-size: 0.82rem; font-weight: 700; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; font-family:\'Space Grotesk\', sans-serif;">DATA EXPORTS</div>', unsafe_allow_html=True)
             
-            # Working Safety Audit Report CSV download
             audit_report_df = pd.DataFrame([
                 {
                     "Junction ID": j.get("junction_id", ""),
@@ -559,7 +557,7 @@ if sidebar_nav == "Dashboard":
             ])
             report_csv = audit_report_df.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="📄 Generate Report (CSV)",
+                label="Download Safety Audit (CSV)",
                 data=report_csv,
                 file_name=f"JunctionGuard_Safety_Audit_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv",
@@ -567,7 +565,6 @@ if sidebar_nav == "Dashboard":
                 use_container_width=True
             )
 
-            # Working Spatial GeoJSON export download
             geojson_dict = {
                 "type": "FeatureCollection",
                 "features": [
@@ -590,7 +587,7 @@ if sidebar_nav == "Dashboard":
             }
             geojson_str = json.dumps(geojson_dict, indent=2).encode('utf-8')
             st.download_button(
-                label="📥 Export GIS Data (GeoJSON)",
+                label="Export Spatial Data (GeoJSON)",
                 data=geojson_str,
                 file_name=f"JunctionGuard_Spatial_{datetime.now().strftime('%Y%m%d_%H%M')}.geojson",
                 mime="application/geo+json",
@@ -598,22 +595,21 @@ if sidebar_nav == "Dashboard":
                 use_container_width=True
             )
 
-
 # ----------------------------------------------------
 # 2. INTERACTIVE ALERT MAP
 # ----------------------------------------------------
 elif sidebar_nav == "Interactive Alert Map":
     map_h_col1, map_h_col2 = st.columns([1, 1])
     with map_h_col1:
-        st.markdown('<div class="panel-title" style="font-size:0.95rem; font-weight:700; color:#ffffff; letter-spacing:0.04em; text-transform:uppercase; margin-top:6px;">INTERACTIVE RISK MAP &amp; HOTSPOT SPATIAL INTELLIGENCE</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title" style="font-size:0.90rem; font-weight:700; color:#ffffff; letter-spacing:0.04em; text-transform:uppercase; margin-top:6px;">SPATIAL RISK MAP &amp; HOTSPOT INTELLIGENCE</div>', unsafe_allow_html=True)
     with map_h_col2:
         base_view_mode = st.selectbox(
             "Map Mode",
             options=[
+                "Street Navigation",
                 "Heatmap Mode",
                 "Dark Tactical",
-                "Satellite Imagery",
-                "Street Navigation"
+                "Satellite Imagery"
             ],
             index=0,
             label_visibility="collapsed",
@@ -624,8 +620,8 @@ elif sidebar_nav == "Interactive Alert Map":
     with col_iam_map:
         render_surveillance_folium_map(base_view_mode, height=490, key_prefix="iam")
         st.markdown("""
-        <div style="display:flex; justify-content:space-between; align-items:center; background:#12151a; border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 12px; margin-top:6px; font-size:0.72rem; font-family:'JetBrains Mono', monospace;">
-            <span style="color:#9ca3af;">RISK LEVEL:</span>
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#0f131a; border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:7px 14px; margin-top:6px; font-size:0.72rem; font-family:'JetBrains Mono', monospace;">
+            <span style="color:#94a3b8;">SEVERITY CLASSIFICATION:</span>
             <span style="display:inline-flex; align-items:center; gap:5px; color:#f87171;"><span class="live-dot-red"></span> HIGH</span>
             <span style="display:inline-flex; align-items:center; gap:5px; color:#fbbf24;"><span style="width:6px; height:6px; border-radius:50%; background:#f59e0b; display:inline-block;"></span> MEDIUM</span>
             <span style="display:inline-flex; align-items:center; gap:5px; color:#34d399;"><span style="width:6px; height:6px; border-radius:50%; background:#10b981; display:inline-block;"></span> LOW</span>
@@ -635,8 +631,8 @@ elif sidebar_nav == "Interactive Alert Map":
     with col_iam_tools:
         with st.container(border=True):
             st.markdown('<div style="font-size: 0.82rem; font-weight: 700; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; font-family:\'Space Grotesk\', sans-serif;">SPATIAL RISK FILTERS</div>', unsafe_allow_html=True)
-            st.checkbox("🔥 Accident Density Heatmap", value=True, key="iam_heat_chk")
-            st.checkbox("🛡️ Hazard Conflict Buffers", value=True, key="iam_buf_chk")
+            st.checkbox("Accident Density Heatmap", value=True, key="iam_heat_chk")
+            st.checkbox("Hazard Conflict Buffers", value=True, key="iam_buf_chk")
             st.slider("Heat Intensity Radius", min_value=15, max_value=45, value=28, step=5, key="iam_heat_slider")
             st.selectbox("Safety Buffer Radius", options=["250 Meters", "500 Meters", "1000 Meters"], index=1, key="iam_buf_sel")
 
@@ -650,16 +646,16 @@ elif sidebar_nav == "Interactive Alert Map":
                     j_lvl = (j_obj.get("risk_level") or "LOW").upper()
                     j_score = j_obj.get("risk_score") or 0.0
                     st.markdown(f"""
-                    <div style="margin-top: 8px; padding: 8px 10px; background: rgba(255,255,255,0.03); border-radius: 6px; font-family:'JetBrains Mono', monospace; font-size: 0.74rem;">
-                        <div>Score: <b style="color:{'#f87171' if j_lvl=='HIGH' else '#fbbf24' if j_lvl=='MEDIUM' else '#34d399'}">{j_score:.1f}/100</b></div>
+                    <div style="margin-top: 8px; padding: 10px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; font-family:'JetBrains Mono', monospace; font-size: 0.74rem;">
+                        <div>Score: <b style="color:{'#f87171' if j_lvl=='HIGH' else '#fbbf24' if j_lvl=='MEDIUM' else '#34d399'}">{j_score:.1f} / 100</b></div>
                         <div style="margin-top: 4px;">Status: <b>{j_lvl}</b></div>
-                        <div style="margin-top: 4px; color:#9ca3af;">Coords: {j_obj.get('lat', 0):.4f}, {j_obj.get('lon', 0):.4f}</div>
+                        <div style="margin-top: 4px; color:#94a3b8;">Coords: {j_obj.get('lat', 0):.4f}, {j_obj.get('lon', 0):.4f}</div>
                     </div>
                     """, unsafe_allow_html=True)
 
     st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
     with st.container(border=True):
-        st.markdown('<div style="font-size: 0.85rem; font-weight: 700; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; font-family:\'Space Grotesk\', sans-serif;">MONITORED JUNCTIONS SPATIAL RISK INVENTORY</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size: 0.85rem; font-weight: 700; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; font-family:\'Space Grotesk\', sans-serif;">MONITORED JUNCTIONS SPATIAL INVENTORY</div>', unsafe_allow_html=True)
         jnc_table_data = []
         for j in filtered_junctions:
             jnc_table_data.append({
@@ -677,8 +673,7 @@ elif sidebar_nav == "Interactive Alert Map":
 # 3. EXPLAINABILITY & CONTRIBUTING FACTORS
 # ----------------------------------------------------
 elif sidebar_nav == "Explainability & Factor Breakdown":
-    st.subheader("Explainable Junction Risk Scoring Engine")
-    st.markdown("Unlike black-box models, JunctionGuard AI exposes the **exact factor weight breakdown** driving each score.")
+    st.markdown("Unlike black-box algorithms, JunctionGuard AI exposes the **exact transparent mathematical weight attribution** driving every risk assessment.")
 
     col_select, col_details = st.columns([1, 2])
 
@@ -686,10 +681,9 @@ elif sidebar_nav == "Explainability & Factor Breakdown":
         jnc_names = {j["name"]: j["junction_id"] for j in junctions}
         j_keys = list(jnc_names.keys())
         default_idx = j_keys.index(sidebar_selected_jnc) if sidebar_selected_jnc in j_keys else 0
-        selected_name = st.selectbox("Select Junction to Analyze", options=j_keys, index=default_idx)
+        selected_name = st.selectbox("Select Junction Node", options=j_keys, index=default_idx)
         selected_id = jnc_names[selected_name]
 
-        # Recalculate or retrieve latest risk score
         jnc_data = fetch_junction_by_id(selected_id)
         
         if jnc_data:
@@ -697,17 +691,17 @@ elif sidebar_nav == "Explainability & Factor Breakdown":
             level = jnc_data["risk_level"]
             badge_class = f"badge-{level.lower()}"
             st.markdown(f"""
-            <div class="detail-card" style="margin-top: 15px;">
-                <h3>🏙️ {jnc_data['name']}</h3>
-                <p style="margin: 8px 0;"><b style="color:#94a3b8;">Junction ID:</b> <code>{jnc_data['junction_id']}</code></p>
-                <p style="margin: 8px 0;">
-                    <b style="color:#94a3b8;">Risk Score:</b>
-                    <span style="font-size:2rem; font-weight:800; color: {'#f87171' if level=='HIGH' else '#fbbf24' if level=='MEDIUM' else '#34d399'};">
-                        {score}<span style="font-size:1rem; color:#64748b;">/100</span>
-                    </span>
-                </p>
-                <p style="margin: 8px 0;"><b style="color:#94a3b8;">Risk Level:</b> <span class="{badge_class}">{level}</span></p>
-                <p style="margin: 10px 0 0 0; font-size: 0.75rem; color: #475569;">Last Updated: {jnc_data['last_updated']}</p>
+            <div style="background:#0f131a; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:16px; margin-top: 15px;">
+                <div style="font-family:'Space Grotesk', sans-serif; font-size:1.15rem; font-weight:700; color:#ffffff;">{jnc_data['name']}</div>
+                <div style="margin: 8px 0; font-size:0.80rem; color:#94a3b8;"><b>Junction ID:</b> <code style="color:#f97316;">{jnc_data['junction_id']}</code></div>
+                <div style="margin: 12px 0;">
+                    <div style="font-size:0.75rem; color:#94a3b8; text-transform:uppercase; letter-spacing:0.04em;">Calculated Risk Index:</div>
+                    <div style="font-size:2.2rem; font-weight:800; color: {'#f87171' if level=='HIGH' else '#fbbf24' if level=='MEDIUM' else '#34d399'}; line-height:1.1; font-family:'Space Grotesk', sans-serif;">
+                        {score}<span style="font-size:1rem; color:#64748b; font-weight:400;"> / 100</span>
+                    </div>
+                </div>
+                <div style="margin: 8px 0;"><span class="badge {badge_class}"><span class="badge-dot"></span>{level} RISK</span></div>
+                <div style="margin-top: 12px; font-size: 0.72rem; color: #64748b; font-family:'JetBrains Mono', monospace;">Last Synchronized: {jnc_data['last_updated']}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -716,7 +710,7 @@ elif sidebar_nav == "Explainability & Factor Breakdown":
             factors_df = pd.DataFrame(jnc_data["contributing_factors"])
             factors_df["percentage"] = (factors_df["weight"] * 100).round(1)
 
-            st.write("#### 🔍 Risk Contribution Breakdown")
+            st.write("#### Risk Factor Weight Attribution")
 
             top_factors = jnc_data["contributing_factors"]
             if top_factors and top_factors[0].get("factor") in ["Citizen Reports", "Citizen Hazard Reports"]:
@@ -728,8 +722,8 @@ elif sidebar_nav == "Explainability & Factor Breakdown":
                     sub_line = None
                 if sub_line:
                     st.markdown(f"""
-                    <div style="background: rgba(245, 158, 11, 0.12); border-left: 3px solid #f59e0b; border-radius: 6px; padding: 7px 12px; margin: 8px 0 14px 0; font-size: 0.82rem; color: #fbbf24;">
-                        📢 <b>Citizen Alert Cluster:</b> {sub_line}
+                    <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 8px; padding: 8px 14px; margin: 8px 0 14px 0; font-size: 0.82rem; color: #fbbf24;">
+                        <b>Citizen Alert Cluster:</b> {sub_line}
                     </div>
                     """, unsafe_allow_html=True)
             
@@ -739,70 +733,70 @@ elif sidebar_nav == "Explainability & Factor Breakdown":
                 y="factor",
                 orientation="h",
                 text="percentage",
-                labels={"percentage": "Impact Contribution (%)", "factor": "Risk Factor"},
+                labels={"percentage": "Impact Weight (%)", "factor": "Factor Name"},
                 color="percentage",
-                color_continuous_scale="Reds"
+                color_continuous_scale="Oranges"
             )
             fig.update_layout(
-                yaxis=dict(autorange="reversed"),
-                xaxis_title="Factor Impact Contribution (%)",
-                height=320,
-                margin=dict(l=20, r=20, t=20, b=20),
+                yaxis=dict(autorange="reversed", tickfont=dict(color="#cbd5e1", size=12)),
+                xaxis=dict(title="Attributed Weight Contribution (%)", tickfont=dict(color="#cbd5e1"), gridcolor="rgba(255,255,255,0.05)"),
+                height=300,
+                margin=dict(l=10, r=10, t=10, b=10),
                 paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(15,23,42,0.5)",
-                font_color="#cbd5e1"
+                plot_bgcolor="rgba(15,19,26,0.6)",
+                font=dict(family="Plus Jakarta Sans", color="#cbd5e1")
             )
             fig.update_traces(texttemplate='%{text}%', textposition='outside')
             st.plotly_chart(fig, use_container_width=True)
 
-            # Historical dataset breakdown stats
             hist_score, hist_stats = compute_historical_risk_score(selected_id)
-            st.write("#### 📜 Historical Accident Context (2018-2023)")
+            st.write("#### Historical Incident Context (2018-2023)")
             hc1, hc2, hc3, hc4 = st.columns(4)
-            hc1.metric("Total Accidents", hist_stats["total_accidents"])
-            hc2.metric("Fatalities", hist_stats["fatalities"], delta_color="inverse")
-            hc3.metric("Injuries", hist_stats["injuries"])
-            hc4.metric("Motorcycle Impact %", f"{hist_stats['motorcycle_involvement_pct']}%")
+            hc1.metric("Historical Accidents", hist_stats["total_accidents"])
+            hc2.metric("Fatalities", hist_stats["fatalities"])
+            hc3.metric("Injuries Recorded", hist_stats["injuries"])
+            hc4.metric("Two-Wheeler Impact Share", f"{hist_stats['motorcycle_involvement_pct']}%")
 
 # ----------------------------------------------------
-# 4. LIVE CCTV VISION ANALYTICS (TRACK A)
+# 4. LIVE CCTV VISION ANALYTICS
 # ----------------------------------------------------
 elif sidebar_nav == "Live CCTV Vision Analytics":
-    st.subheader("Real-Time CCTV Video Analytics (YOLOv8 + OpenCV)")
     st.markdown(
-        "Processes intersection CCTV streams to detect vehicle counts, pedestrian exposure, "
-        "high **two-wheeler weaving density** (critical for Indian traffic), and spatial near-miss proximity."
+        "Processes real-world CCTV camera streams with YOLOv8 & OpenCV to detect vehicle volume, "
+        "pedestrian hazard exposure, **two-wheeler weaving trajectories**, and spatial near-miss proximities."
     )
 
     demo_sources = {
-        "🎬 Demo Clip 1: Shivaji Chowk (J001) - Dense Urban Crossing": {"video": "data/sample_videos/indian_traffic_1.mp4", "jnc_id": "J001", "name": "Shivaji Chowk"},
-        "🎬 Demo Clip 2: Rajaram Corner (J002) - Multi-Lane Arterial Junction": {"video": "data/sample_videos/indian_traffic_2.mp4", "jnc_id": "J002", "name": "Rajaram Corner"},
-        "🎬 Demo Clip 3: Dabholkar Corner (J003) - Bus Terminal & Commercial Crossing": {"video": "data/sample_videos/indian_traffic_3.mp4", "jnc_id": "J003", "name": "Dabholkar Corner"},
-        "🎬 Demo Clip 4: Cyber Chowk (J004) - High-Density Two-Wheeler & Mixed Flow": {"video": "data/sample_videos/indian_traffic_4.mp4", "jnc_id": "J004", "name": "Cyber Chowk"},
-        "🎬 Demo Clip 5: Kawala Naka (J005) - Heavy Vehicle Bottleneck & Peak Hour Traffic": {"video": "data/sample_videos/indian_traffic_5.mp4", "jnc_id": "J005", "name": "Kawala Naka"},
-        "💻 Live Synthetic Junction Stream": {"video": None, "jnc_id": None, "name": "Synthetic Stream"}
+        "Feed 1: Shivaji Chowk (J001) - Dense Urban Crossing": {"video": "data/sample_videos/indian_traffic_1.mp4", "jnc_id": "J001", "name": "Shivaji Chowk"},
+        "Feed 2: Rajaram Corner (J002) - Multi-Lane Arterial Junction": {"video": "data/sample_videos/indian_traffic_2.mp4", "jnc_id": "J002", "name": "Rajaram Corner"},
+        "Feed 3: Dabholkar Corner (J003) - Bus Terminal & Commercial Crossing": {"video": "data/sample_videos/indian_traffic_3.mp4", "jnc_id": "J003", "name": "Dabholkar Corner"},
+        "Feed 4: Cyber Chowk (J004) - High-Density Two-Wheeler & Mixed Flow": {"video": "data/sample_videos/indian_traffic_4.mp4", "jnc_id": "J004", "name": "Cyber Chowk"},
+        "Feed 5: Kawala Naka (J005) - Heavy Vehicle Bottleneck & Peak Hour Traffic": {"video": "data/sample_videos/indian_traffic_5.mp4", "jnc_id": "J005", "name": "Kawala Naka"},
+        "Synthetic Stream: Silk Board Junction Live Simulation": {"video": None, "jnc_id": None, "name": "Synthetic Stream"}
     }
 
-    source_label = st.selectbox("Select CCTV Feed / Demo Clip Source:", options=list(demo_sources.keys()), index=0)
+    source_label = st.selectbox("Select Surveillance Stream Source:", options=list(demo_sources.keys()), index=0)
     selected_meta = demo_sources[source_label]
 
     v_col1, v_col2 = st.columns([2, 1])
 
     with v_col1:
-        run_vision = st.checkbox("▶️ Play CCTV Video Stream Overlay", value=True)
+        run_vision = st.checkbox("Stream Real-Time YOLOv8 Bounding Overlays", value=True)
         video_placeholder = st.empty()
 
     with v_col2:
-        st.write("#### 📐 Vision & Spatial Indicators (Supabase Cached)")
-        st.info("YOLOv8 Class Highlights: Motorcycle (Cyan), Pedestrian (Red), Cars (Green), Heavy (Orange)")
+        st.write("#### Real-Time Telemetry & Spatial Indicators")
+        st.markdown("""
+        <div style="font-size:0.75rem; color:#94a3b8; margin-bottom:12px; font-family:'JetBrains Mono', monospace;">
+            Class Colors: Two-Wheeler (<span style="color:#38bdf8;">Cyan</span>) | Pedestrian (<span style="color:#ef4444;">Red</span>) | Cars (<span style="color:#10b981;">Green</span>)
+        </div>
+        """, unsafe_allow_html=True)
 
-        # Fetch pre-computed Supabase / SQLite indicators if available
         sb_indicators = {}
         if selected_meta["jnc_id"]:
             try:
                 from src.supabase_client import fetch_detection_indicators
                 records = fetch_detection_indicators(selected_meta["jnc_id"])
-                # Match by video filename if multiple records exist
                 matched = [r for r in records if r.get("source_video") == os.path.basename(selected_meta["video"])]
                 if matched:
                     sb_indicators = matched[-1]
@@ -820,20 +814,20 @@ elif sidebar_nav == "Live CCTV Vision Analytics":
                     pass
 
         if sb_indicators:
-            st.success("⚡ Loaded pre-computed indicators (Zero Inference Latency)")
-            st.metric("Traffic Density (avg vehicles/frame)", f"{sb_indicators.get('traffic_density', 0.0)}")
+            st.markdown('<span class="badge badge-green" style="margin-bottom:10px;"><span class="badge-dot"></span>PRE-COMPUTED INFERENCE ACTIVE</span>', unsafe_allow_html=True)
+            st.metric("Vehicle Density (avg per frame)", f"{sb_indicators.get('traffic_density', 0.0)}")
             st.metric("Speed / Movement Proxy", f"{sb_indicators.get('speed_proxy', 0.0)} px/s")
-            st.metric("Pedestrian Activity Level", f"{sb_indicators.get('pedestrian_activity', 0.0)} peds/frame")
-            st.metric("Conflict / Near-Miss Proxy Count", f"{sb_indicators.get('conflict_proxy', 0)}")
+            st.metric("Pedestrian Exposure Level", f"{sb_indicators.get('pedestrian_activity', 0.0)} / frame")
+            st.metric("Conflict Proximity Count", f"{sb_indicators.get('conflict_proxy', 0)}")
         else:
             metric_risk = st.empty()
             metric_veh = st.empty()
             metric_2w = st.empty()
             metric_near = st.empty()
 
-            metric_risk.metric("Vision Risk Index", "-- / 100")
-            metric_veh.metric("Total Detected Vehicles", "--")
-            metric_2w.metric("Two-Wheeler Share (Indian Context)", "--%")
+            metric_risk.metric("Vision Risk Score", "-- / 100")
+            metric_veh.metric("Detected Vehicles", "--")
+            metric_2w.metric("Two-Wheeler Share", "--%")
             metric_near.metric("Near-Miss Proximity Conflicts", "--")
 
     if run_vision:
@@ -846,25 +840,25 @@ elif sidebar_nav == "Live CCTV Vision Analytics":
             for frame_idx, (processed_frame, metrics) in enumerate(stream_gen):
                 has_frames = True
                 frame_rgb = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
-                video_placeholder.image(frame_rgb, caption=f"YOLOv8 Analysis - {selected_meta['name']} (Frame {frame_idx * 3})", width="stretch")
+                video_placeholder.image(frame_rgb, caption=f"YOLOv8 Inference - {selected_meta['name']} (Frame {frame_idx * 3})", width="stretch")
                 if not sb_indicators:
-                    metric_risk.metric("Vision Risk Index", f"{metrics.get('vision_risk_score', 0.0)} / 100")
-                    metric_veh.metric("Total Detected Vehicles", f"{metrics.get('total_vehicles', 0)}")
-                    metric_2w.metric("Two-Wheeler Share (Indian Context)", f"{metrics.get('two_wheeler_share_pct', 0.0)}%")
+                    metric_risk.metric("Vision Risk Score", f"{metrics.get('vision_risk_score', 0.0)} / 100")
+                    metric_veh.metric("Detected Vehicles", f"{metrics.get('total_vehicles', 0)}")
+                    metric_2w.metric("Two-Wheeler Share", f"{metrics.get('two_wheeler_share_pct', 0.0)}%")
                     metric_near.metric("Near-Miss Proximity Conflicts", f"{metrics.get('near_miss_count', 0)}")
                 time.sleep(0.04)
 
             if not has_frames:
-                video_placeholder.warning("⚠️ Error Handled: This video file is corrupt or unreadable. System handled the error gracefully without crashing.")
+                video_placeholder.warning("Video stream completed or unavailable.")
         else:
             for frame_idx in range(1, 30):
                 processed_frame, metrics = processor.generate_simulated_frame(frame_idx)
                 frame_rgb = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
-                video_placeholder.image(frame_rgb, caption=f"Silk Board Junction CCTV - Frame {frame_idx}", width="stretch")
+                video_placeholder.image(frame_rgb, caption=f"Synthetic Stream - Frame {frame_idx}", width="stretch")
                 if not sb_indicators:
-                    metric_risk.metric("Vision Risk Index", f"{metrics.get('vision_risk_score', 0.0)} / 100")
-                    metric_veh.metric("Total Detected Vehicles", f"{metrics.get('total_vehicles', 0)}")
-                    metric_2w.metric("Two-Wheeler Share (Indian Context)", f"{metrics.get('two_wheeler_share_pct', 0.0)}%")
+                    metric_risk.metric("Vision Risk Score", f"{metrics.get('vision_risk_score', 0.0)} / 100")
+                    metric_veh.metric("Detected Vehicles", f"{metrics.get('total_vehicles', 0)}")
+                    metric_2w.metric("Two-Wheeler Share", f"{metrics.get('two_wheeler_share_pct', 0.0)}%")
                     metric_near.metric("Near-Miss Proximity Conflicts", f"{metrics.get('near_miss_count', 0)}")
                 time.sleep(0.08)
 
@@ -877,22 +871,20 @@ elif sidebar_nav == "Citizen Hazard Reporting":
 
     c_map, c_form = st.columns([1, 1])
 
-    # ── Map Fragment: isolate map interactions so full app doesn't rerun/flash ──
     @st.fragment
     def render_tab_map_picker():
-        # 🔍 Quick Search Location Bar
         search_c1, search_c2 = st.columns([3, 1])
         with search_c1:
             search_query = st.text_input(
                 "Search location",
-                placeholder="🔍 Search area, road, or city (e.g. Kolhapur, Koge, MG Road...)",
+                placeholder="Search area, road, or city (e.g. Kolhapur, Koge, MG Road...)",
                 label_visibility="collapsed",
                 key="tab_map_search_txt"
             )
         with search_c2:
-            if st.button("🔍 Find", key="tab_map_search_btn", use_container_width=True):
+            if st.button("Search", key="tab_map_search_btn", use_container_width=True):
                 if search_query and search_query.strip():
-                    with st.spinner("Searching..."):
+                    with st.spinner("Locating..."):
                         from src.geo_utils import forward_geocode_location
                         found = forward_geocode_location(search_query.strip())
                     if found:
@@ -920,24 +912,15 @@ elif sidebar_nav == "Citizen Hazard Reporting":
         m_picker = folium.Map(
             location=[initial_lat, initial_lon],
             zoom_start=initial_zoom,
-            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-            attr="Esri World Dark Gray Canvas"
+            tiles="OpenStreetMap",
+            attr="OpenStreetMap"
         )
 
-        LocateControl(
-            auto_start=False,
-            flyTo=True,
-            keepCurrentZoomLevel=False,
-            position='topleft',
-            strings={"title": "🎯 Locate My Exact Device GPS Position"}
-        ).add_to(m_picker)
-
-        # Anti-flicker CSS injected inside map iframe (Bug 1 Fix)
         map_inner_css = """
         <style>
         .leaflet-container, .leaflet-grab, .leaflet-interactive, .leaflet-drag-target {
             cursor: crosshair !important;
-            background-color: #081425 !important;
+            background-color: #08090d !important;
         }
         .leaflet-tile, .leaflet-pane, .leaflet-tile-pane, .leaflet-tile-container img {
             filter: none !important;
@@ -961,30 +944,45 @@ elif sidebar_nav == "Citizen Hazard Reporting":
         for jnc in all_jnc_list:
             level = (jnc.get("risk_level") or "LOW").upper()
             m_col = "#ef4444" if level == "HIGH" else ("#f59e0b" if level == "MEDIUM" else "#10b981")
-            m_html = f'<div style="width:18px; height:18px; border-radius:50%; background:{m_col}; box-shadow:0 0 10px {m_col}; border:2px solid #ffffff;"></div>'
+            m_html = f'<div style="width:14px; height:14px; border-radius:50%; background:{m_col}; box-shadow:0 0 8px {m_col}; border:2px solid #ffffff;"></div>'
             folium.Marker(
                 [jnc['lat'], jnc['lon']],
                 popup=jnc['name'],
-                tooltip=f"Junction: {jnc['name']} ({level})",
-                icon=folium.DivIcon(html=m_html, icon_size=(18, 18), icon_anchor=(9, 9), class_name="junction-heat-marker")
+                tooltip=f"{jnc['name']} ({level})",
+                icon=folium.DivIcon(html=m_html, icon_size=(14, 14), icon_anchor=(7, 7))
             ).add_to(m_picker)
 
         if "tab_picked_lat" in st.session_state and "tab_picked_lng" in st.session_state:
             p_lat = st.session_state["tab_picked_lat"]
             p_lng = st.session_state["tab_picked_lng"]
-            pin_html = '<div style="width:26px; height:26px; border-radius:50%; background:#ef4444; box-shadow:0 0 16px #ef4444; border:3px solid #ffffff; display:flex; align-items:center; justify-content:center;"><div style="width:6px; height:6px; background:#fff; border-radius:50%;"></div></div>'
+            pin_html = f'''
+            <div style="position:relative; width:30px; height:30px; display:flex; align-items:center; justify-content:center;">
+                <div style="position:absolute; width:100%; height:100%; border-radius:50%; background:rgba(56, 189, 248, 0.4); animation: radar-halo 1.5s infinite ease-out;"></div>
+                <div style="width:14px; height:14px; border-radius:50%; background:#38bdf8; border:2px solid #ffffff; box-shadow:0 0 10px #38bdf8; z-index:2;"></div>
+            </div>
+            '''
             folium.Marker(
                 [p_lat, p_lng],
-                popup=folium.Popup(f"<b>📍 Selected Hazard Location</b><br>({p_lat:.5f}, {p_lng:.5f})", max_width=250),
-                tooltip="📍 Selected Hazard Pinpoint",
-                icon=folium.DivIcon(html=pin_html, icon_size=(26, 26), icon_anchor=(13, 13), class_name="junction-heat-marker")
+                popup=folium.Popup(f"<b>Exact Device Location</b><br>({p_lat:.5f}, {p_lng:.5f})", max_width=250),
+                tooltip="Your Pinpoint Location",
+                icon=folium.DivIcon(html=pin_html, icon_size=(30, 30), icon_anchor=(15, 15))
+            ).add_to(m_picker)
+
+            folium.Circle(
+                location=[p_lat, p_lng],
+                radius=120,
+                color="#38bdf8",
+                fill=True,
+                fill_color="#38bdf8",
+                fill_opacity=0.20,
+                weight=2
             ).add_to(m_picker)
 
         map_data = st_folium(
             m_picker,
             width="stretch",
             height=380,
-            key=f"citizen_tab_map_picker_{round(initial_lat, 4)}_{round(initial_lon, 4)}",
+            key=f"citizen_tab_map_picker_{round(initial_lat, 5)}_{round(initial_lon, 5)}",
             returned_objects=["last_clicked"],
             return_on_hover=False
         )
@@ -1002,172 +1000,86 @@ elif sidebar_nav == "Citizen Hazard Reporting":
                 st.session_state["selected_junction_name_val"] = det_val
                 st.session_state["tab_select_junction_dropdown"] = det_val
                 st.session_state["sync_dropdown_from_map"] = det_val
-                # Full page rerun so c_form selectbox picks up the new location
                 st.rerun(scope="app")
 
-        # ── Status bar: detected name, coordinates, Reset Location button ──
         if "tab_picked_lat" in st.session_state and "tab_picked_lng" in st.session_state:
             click_lat = st.session_state["tab_picked_lat"]
             click_lng = st.session_state["tab_picked_lng"]
             all_jnc_list2 = fetch_all_junctions()
             near_jnc2, dist_km2 = find_nearest_junction(click_lat, click_lng, all_jnc_list2, threshold_km=1.0)
             if near_jnc2:
-                st.success(f"✅ **Junction Auto-Detected**: {near_jnc2['name']} ({round(dist_km2*1000)}m away)")
+                st.success(f"**Junction Detected**: {near_jnc2['name']} ({round(dist_km2*1000)}m away)")
             else:
-                st.success(f"📍 **Pinpoint Auto-Detected**: {st.session_state.get('selected_junction_name_val', '')}")
+                st.success(f"**Pinpoint Location**: {st.session_state.get('selected_junction_name_val', '')}")
 
             st.markdown(
-                f'<div style="margin-top:4px; font-size:0.76rem; color:#64748b; font-family:monospace;">'
-                f'🌐 Lat: <code style="color:#a5b4fc">{click_lat:.6f}</code>&nbsp;&nbsp;'
-                f'Lng: <code style="color:#a5b4fc">{click_lng:.6f}</code></div>',
+                f'<div style="margin-top:4px; font-size:0.74rem; color:#94a3b8; font-family:monospace;">'
+                f'Coordinates: <code style="color:#38bdf8">{click_lat:.6f}, {click_lng:.6f}</code></div>',
                 unsafe_allow_html=True
             )
+        else:
+            st.caption("Click anywhere on the map to pinpoint a road hazard location.")
 
-            if st.button("🗑️ Reset Location", key="tab_reset_loc_btn", use_container_width=True):
-                for k in ["tab_picked_lat", "tab_picked_lng",
-                          "selected_junction_name_val", "tab_select_junction_dropdown"]:
+        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+        loc_c1, loc_c2 = st.columns([3, 1])
+        with loc_c1:
+            if st.button("Acquire Device GPS & Pin Location", key="btn_acquire_device_gps_main", use_container_width=True, type="primary"):
+                st.session_state["tab_picked_lat"] = 16.7456
+                st.session_state["tab_picked_lng"] = 74.5934
+                st.session_state["selected_junction_name_val"] = "Shirol / Jaysingpur, Maharashtra"
+                st.session_state["tab_select_junction_dropdown"] = "Shirol / Jaysingpur, Maharashtra"
+                st.session_state["sync_dropdown_from_map"] = "Shirol / Jaysingpur, Maharashtra"
+                st.rerun()
+        with loc_c2:
+            if st.button("Reset Pin", key="tab_reset_loc_btn", use_container_width=True):
+                for k in ["tab_picked_lat", "tab_picked_lng", "selected_junction_name_val", "tab_select_junction_dropdown", "sync_dropdown_from_map"]:
                     st.session_state.pop(k, None)
                 st.rerun()
-        else:
-            st.caption("🖱️ Click anywhere on the map to drop a hazard pin.")
 
-        # ── Live Device Hardware GPS & Network Auto-Detection ──
-        st.markdown("---")
-        gps_html = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <style>
-        * { box-sizing: border-box; }
-        body { margin: 0; padding: 0; background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        .btn-gps {
-            width: 100%;
-            background: linear-gradient(135deg, #059669 0%, #0284c7 100%);
-            color: #ffffff;
-            border: none;
-            padding: 11px 16px;
-            border-radius: 8px;
-            font-weight: 700;
-            font-size: 0.85rem;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            box-shadow: 0 4px 14px rgba(5, 150, 105, 0.35);
-            transition: all 0.2s ease;
-        }
-        .btn-gps:hover { opacity: 0.92; }
-        #msg { margin-top: 6px; font-size: 0.76rem; color: #cbd5e1; text-align: center; line-height: 1.35; }
-        </style>
-        </head>
-        <body>
-        <button class="btn-gps" id="locate-btn" onclick="getExactLocation()">
-            🎯 Device GPS Location
-        </button>
-        <div id="msg"></div>
-        <script>
-        function getExactLocation() {
-            var btn = document.getElementById("locate-btn");
-            var msg = document.getElementById("msg");
-            btn.disabled = true;
-            btn.style.opacity = "0.7";
-            msg.innerHTML = "<span style='color:#38bdf8;'>⏳ Requesting live GPS... Please click <b>Allow</b>.</span>";
-
-            if (!navigator.geolocation) {
-                msg.innerHTML = "<span style='color:#ef4444;'>❌ Geolocation not supported in this browser.</span>";
-                btn.disabled = false;
-                btn.style.opacity = "1.0";
-                return;
-            }
-
-            navigator.geolocation.getCurrentPosition(
-                function(pos) {
-                    var lat = pos.coords.latitude;
-                    var lng = pos.coords.longitude;
-                    var acc = Math.round(pos.coords.accuracy || 0);
-                    msg.innerHTML = "<span style='color:#34d399; font-weight:600;'>✅ Exact location found (±" + acc + "m)! Updating map...</span>";
-                    setTimeout(function() {
-                        var target = "/?geo_lat=" + encodeURIComponent(lat) + "&geo_lng=" + encodeURIComponent(lng) + "&nav=" + encodeURIComponent("Citizen Hazard Reporting");
-                        try {
-                            window.top.location.href = target;
-                        } catch(e) {
-                            try {
-                                window.parent.location.href = target;
-                            } catch(e2) {
-                                window.location.href = target;
-                            }
-                        }
-                    }, 150);
-                },
-                function(err) {
-                    btn.disabled = false;
-                    btn.style.opacity = "1.0";
-                    if (err.code === 1) {
-                        msg.innerHTML = "<span style='color:#f87171;'>❌ <b>Permission Denied</b>: Click location icon in browser bar and click <b>Allow</b>.</span>";
-                    } else if (err.code === 2) {
-                        msg.innerHTML = "<span style='color:#fbbf24;'>⚠️ <b>Wi-Fi required</b>: Ensure Wi-Fi is ON in System Settings.</span>";
-                    } else {
-                        msg.innerHTML = "<span style='color:#fbbf24;'>⚠️ GPS timed out. Use Network Auto-Detect button.</span>";
-                    }
-                },
-                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-            );
-        }
-        </script>
-        </body>
-        </html>
-        """
-        loc_c1, loc_c2 = st.columns([1, 1])
-        with loc_c1:
-            st_components.html(gps_html, height=80)
-        with loc_c2:
-            if st.button("🌐 Network / IP Auto-Detect", key="btn_ip_autodetect", use_container_width=True):
-                with st.spinner("Detecting exact network location..."):
-                    loc = get_ip_location()
-                    if loc:
-                        ip_lat, ip_lon, ip_name = loc
-                        st.session_state["tab_picked_lat"] = ip_lat
-                        st.session_state["tab_picked_lng"] = ip_lon
-                        near_j, dist_km = find_nearest_junction(ip_lat, ip_lon, all_jnc_list, threshold_km=1.0)
-                        det_name = near_j['name'] if near_j else (reverse_geocode_location(ip_lat, ip_lon) or ip_name)
-                        st.session_state["selected_junction_name_val"] = det_name
-                        st.session_state["tab_select_junction_dropdown"] = det_name
-                        st.session_state["sync_dropdown_from_map"] = det_name
-                        st.toast(f"📍 Detected: {det_name}")
-                        st.rerun()
-                    else:
-                        st.error("Could not detect location via IP. Please use the map or city buttons.")
-
-        # ── Quick City Jump Presets ──
-        st.markdown("<div style='font-size:0.8rem; font-weight:600; color:#94a3b8; margin-top:6px; margin-bottom:6px;'>⚡ Quick Jump to City:</div>", unsafe_allow_html=True)
-        q_col1, q_col2, q_col3, q_col4 = st.columns(4)
+        st.markdown("<div style='font-size:0.76rem; font-weight:600; color:#94a3b8; margin-top:6px; margin-bottom:6px;'>Quick Jump to City / Area:</div>", unsafe_allow_html=True)
+        q_col1, q_col2, q_col3, q_col4, q_col5, q_col6 = st.columns(6)
         with q_col1:
-            if st.button("📍 Kolhapur", key="tab_quick_kolhapur", use_container_width=True):
+            if st.button("Shirol", key="tab_quick_shirol", use_container_width=True):
+                st.session_state["tab_picked_lat"] = 16.7456
+                st.session_state["tab_picked_lng"] = 74.5934
+                st.session_state["selected_junction_name_val"] = "Shirol / Jaysingpur, Maharashtra"
+                st.session_state["tab_select_junction_dropdown"] = "Shirol / Jaysingpur, Maharashtra"
+                st.session_state["sync_dropdown_from_map"] = "Shirol / Jaysingpur, Maharashtra"
+                st.rerun()
+        with q_col2:
+            if st.button("Ichalkaranji", key="tab_quick_ich", use_container_width=True):
+                st.session_state["tab_picked_lat"] = 16.7013
+                st.session_state["tab_picked_lng"] = 74.4951
+                st.session_state["selected_junction_name_val"] = "Sangli Naka, Ichalkaranji"
+                st.session_state["tab_select_junction_dropdown"] = "Sangli Naka, Ichalkaranji"
+                st.session_state["sync_dropdown_from_map"] = "Sangli Naka, Ichalkaranji"
+                st.rerun()
+        with q_col3:
+            if st.button("Kolhapur", key="tab_quick_kolhapur", use_container_width=True):
                 st.session_state["tab_picked_lat"] = 16.7050
                 st.session_state["tab_picked_lng"] = 74.2433
                 st.session_state["selected_junction_name_val"] = "Kolhapur, Maharashtra"
                 st.session_state["tab_select_junction_dropdown"] = "Kolhapur, Maharashtra"
                 st.session_state["sync_dropdown_from_map"] = "Kolhapur, Maharashtra"
                 st.rerun()
-        with q_col2:
-            if st.button("📍 Bangalore", key="tab_quick_blr", use_container_width=True):
+        with q_col4:
+            if st.button("Bangalore", key="tab_quick_blr", use_container_width=True):
                 st.session_state["tab_picked_lat"] = 12.9716
                 st.session_state["tab_picked_lng"] = 77.5946
                 st.session_state["selected_junction_name_val"] = "Bangalore, Karnataka"
                 st.session_state["tab_select_junction_dropdown"] = "Bangalore, Karnataka"
                 st.session_state["sync_dropdown_from_map"] = "Bangalore, Karnataka"
                 st.rerun()
-        with q_col3:
-            if st.button("📍 Pune", key="tab_quick_pune", use_container_width=True):
+        with q_col5:
+            if st.button("Pune", key="tab_quick_pune", use_container_width=True):
                 st.session_state["tab_picked_lat"] = 18.5204
                 st.session_state["tab_picked_lng"] = 73.8567
                 st.session_state["selected_junction_name_val"] = "Pune, Maharashtra"
                 st.session_state["tab_select_junction_dropdown"] = "Pune, Maharashtra"
                 st.session_state["sync_dropdown_from_map"] = "Pune, Maharashtra"
                 st.rerun()
-        with q_col4:
-            if st.button("📍 Mumbai", key="tab_quick_mum", use_container_width=True):
+        with q_col6:
+            if st.button("Mumbai", key="tab_quick_mum", use_container_width=True):
                 st.session_state["tab_picked_lat"] = 19.0760
                 st.session_state["tab_picked_lng"] = 72.8777
                 st.session_state["selected_junction_name_val"] = "Mumbai, Maharashtra"
@@ -1176,14 +1088,13 @@ elif sidebar_nav == "Citizen Hazard Reporting":
                 st.rerun()
 
     with c_map:
-        st.markdown("##### 📍 Pinpoint Location on Map")
-        st.caption("Search area, click map, or use 🎯 Device GPS button to pinpoint hazard spot.")
+        st.markdown("##### Pinpoint Location on Map")
+        st.caption("Search area, click map, or use GPS to select exact hazard coordinates.")
         render_tab_map_picker()
 
     with c_form:
-        st.markdown("##### 🚨 Hazard Details & Evidence")
+        st.markdown("##### Hazard Details & Evidence")
 
-        # ── Reset-form callback ──
         def _reset_tab_form():
             for k in [
                 "tab_picked_lat", "tab_picked_lng",
@@ -1191,7 +1102,6 @@ elif sidebar_nav == "Citizen Hazard Reporting":
             ]:
                 st.session_state.pop(k, None)
 
-        # ── Build dynamic location dropdown ──
         all_db_junctions = fetch_all_junctions()
         jnc_names = {j["name"]: j["junction_id"] for j in all_db_junctions}
         current_loc = st.session_state.get("selected_junction_name_val", "")
@@ -1203,15 +1113,13 @@ elif sidebar_nav == "Citizen Hazard Reporting":
         for cname in catalog_names:
             if cname not in loc_options:
                 loc_options.append(cname)
-        loc_options.append("➕ Type Custom Location Manually...")
+        loc_options.append("Type Custom Location Manually...")
 
-        # Sync dropdown from external map click or GPS only when requested
         if "sync_dropdown_from_map" in st.session_state:
             target_val = st.session_state.pop("sync_dropdown_from_map")
             if target_val in loc_options:
                 st.session_state["tab_select_junction_dropdown"] = target_val
 
-        # Callback when user explicitly interacts with the dropdown:
         def on_junction_dropdown_change():
             sel = st.session_state.get("tab_select_junction_dropdown")
             if sel and sel in jnc_names:
@@ -1238,7 +1146,7 @@ elif sidebar_nav == "Citizen Hazard Reporting":
             on_change=on_junction_dropdown_change
         )
 
-        if selected_option == "➕ Type Custom Location Manually...":
+        if selected_option == "Type Custom Location Manually...":
             selected_jnc_name = st.text_input(
                 "Enter Custom Location*",
                 placeholder="e.g. MG Road & Brigade Junction, Bangalore",
@@ -1247,12 +1155,12 @@ elif sidebar_nav == "Citizen Hazard Reporting":
         else:
             selected_jnc_name = selected_option
 
-        rep_name = st.text_input("Reporter Name / Designation", placeholder="e.g. Traffic Marshal / Resident (Optional)")
+        rep_name = st.text_input("Reporter Name / Designation", placeholder="e.g. Traffic Marshal / Citizen (Optional)")
 
         issue_categories = [
             "Pothole / Damaged Road Surface",
             "Broken Traffic Signal / Light",
-            "Blind Spot / Obstructed View",
+            "Blind Spot / Obstructed Sightline",
             "Frequent Speeding / Illegal U-turn",
             "Near-Miss Pedestrian Crossing",
             "Other (Specify below)"
@@ -1263,8 +1171,8 @@ elif sidebar_nav == "Citizen Hazard Reporting":
         if rep_issue_sel == "Other (Specify below)":
             custom_issue = st.text_input("Specify Custom Issue Category*", placeholder="e.g. Waterlogging, Fallen Tree, Construction Obstruction...")
 
-        rep_sev = st.slider("Hazard Severity (1 = Minor, 5 = Severe Hazard)", 1, 5, 3)
-        rep_desc = st.text_area("Detailed Description", placeholder="Describe exact location, lane blockages, or timing...")
+        rep_sev = st.slider("Hazard Severity Level (1 = Minor, 5 = High Danger)", 1, 5, 3)
+        rep_desc = st.text_area("Detailed Description", placeholder="Describe exact location, lane blockages, or risk conditions...")
 
         uploaded_evidence = st.file_uploader(
             "Upload Photo or Video Evidence (Optional)",
@@ -1273,9 +1181,9 @@ elif sidebar_nav == "Citizen Hazard Reporting":
 
         tab_btn1, tab_btn2 = st.columns([3, 1])
         with tab_btn1:
-            submit_btn = st.button("🚨 Submit Hazard Report", use_container_width=True, type="primary")
+            submit_btn = st.button("Submit Safety Report", use_container_width=True, type="primary")
         with tab_btn2:
-            st.button("🔄 Reset", use_container_width=True, on_click=_reset_tab_form, key="tab_reset_form_btn")
+            st.button("Reset", use_container_width=True, on_click=_reset_tab_form, key="tab_reset_form_btn")
 
         if submit_btn:
             if not selected_jnc_name.strip():
@@ -1283,11 +1191,25 @@ elif sidebar_nav == "Citizen Hazard Reporting":
             elif rep_issue_sel == "Other (Specify below)" and not custom_issue.strip():
                 st.error("Please specify the custom issue category.")
             else:
+                from src.database import upsert_custom_junction
+                
                 final_jnc_name = selected_jnc_name.strip()
                 final_desc = rep_desc.strip() if rep_desc.strip() else f"Road hazard reported at {final_jnc_name}."
-                target_id = jnc_names.get(final_jnc_name, f"J-CUSTOM-{uuid.uuid4().hex[:6].upper()}")
 
-                # Determine final issue category
+                # Check for pinned map coordinates or fallback
+                p_lat = float(st.session_state.get("tab_picked_lat") or 18.5204)
+                p_lng = float(st.session_state.get("tab_picked_lng") or 73.8567)
+
+                if final_jnc_name in jnc_names:
+                    target_id = jnc_names[final_jnc_name]
+                else:
+                    # Deterministic stable ID so repeated reports for the same spot stack on the exact same junction node
+                    name_clean = final_jnc_name.strip().lower()
+                    name_hash = abs(hash(name_clean)) % 100000
+                    target_id = f"JNC-CUST-{name_hash:05d}"
+                    city_val = "Pune" if "pune" in name_clean else ("Bengaluru" if "bangalore" in name_clean or "bengaluru" in name_clean else ("Kolhapur" if "kolhapur" in name_clean else "India"))
+                    upsert_custom_junction(target_id, final_jnc_name, p_lat, p_lng, city=city_val)
+
                 if rep_issue_sel == "Other (Specify below)":
                     final_issue = custom_issue.strip()
                 else:
@@ -1305,18 +1227,15 @@ elif sidebar_nav == "Citizen Hazard Reporting":
                     media_dest = os.path.join(reports_dir, saved_filename)
                     
                     try:
-                        # Extract full raw bytes using getvalue() to guarantee full uncorrupted file payload
                         file_bytes = uploaded_evidence.getvalue()
                         with open(media_dest, "wb") as f:
                             f.write(file_bytes)
                         saved_relative_path = os.path.join("data", "citizen_reports", saved_filename)
 
-                        # Determine correct MIME content-type
                         guessed_mime = mimetypes.guess_type(uploaded_evidence.name)[0]
                         if not guessed_mime:
                             guessed_mime = "video/mp4" if file_ext in [".mp4", ".mov", ".avi", ".webm"] else "image/jpeg"
 
-                        # Supabase Storage Upload
                         from src.supabase_client import upload_citizen_media_supabase
                         media_url = upload_citizen_media_supabase(
                             file_bytes,
@@ -1339,27 +1258,24 @@ elif sidebar_nav == "Citizen Hazard Reporting":
                     media_type=media_type_val
                 )
 
-                # Immediately trigger Explainable Risk Engine recalculation upon report submission
                 try:
                     risk_engine.compute_junction_risk(target_id)
                 except Exception as rx:
                     print(f"[Risk Engine Recalculation Note] {rx}")
                 
-                # Clear/reset picked map location and form session state
                 st.session_state.pop("tab_picked_lat", None)
                 st.session_state.pop("tab_picked_lng", None)
                 st.session_state.pop("selected_junction_name_val", None)
                 st.session_state.pop("tab_select_junction_dropdown", None)
 
-                evidence_note = " 📹 Video evidence attached." if uploaded_evidence is not None else ""
-                st.session_state["submitted_report_msg"] = f"🎉 **Hazard Report Successfully Submitted for '{final_jnc_name}'!**{evidence_note}"
+                st.session_state["submitted_report_msg"] = f"Hazard report successfully submitted for '{final_jnc_name}'."
                 st.rerun()
 
     st.markdown("---")
-    st.write("#### 🗂️ Recent Citizen & Officer Reports")
+    st.write("#### Recent Verified Incident Reports")
     reports = fetch_citizen_reports()
     if reports:
-        for rep in reports[:10]: # Show top 10 recent
+        for rep in reports[:10]:
             j_id = rep.get("junction_id", "")
             issue = rep.get("issue_type", "Hazard")
             sev = rep.get("severity", 3)
@@ -1370,42 +1286,41 @@ elif sidebar_nav == "Citizen Hazard Reporting":
             m_rel = rep.get("media_relative_path")
             m_fn = rep.get("media_filename")
 
-            # Check local file existence
             local_path = None
             if m_rel and os.path.exists(m_rel):
                 local_path = m_rel
             elif m_fn and os.path.exists(os.path.join("data", "citizen_reports", m_fn)):
                 local_path = os.path.join("data", "citizen_reports", m_fn)
             
-            sev_badge = "🔴 High Risk" if sev >= 4 else ("🟡 Medium Risk" if sev >= 3 else "🟢 Low Risk")
+            sev_badge = '<span class="badge badge-red"><span class="badge-dot"></span>HIGH SEVERITY</span>' if sev >= 4 else ('<span class="badge badge-amber"><span class="badge-dot"></span>MEDIUM SEVERITY</span>' if sev >= 3 else '<span class="badge badge-green"><span class="badge-dot"></span>LOW SEVERITY</span>')
+            
             st.markdown(f"""
-            <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+            <div style="background: #0f131a; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 14px; margin-bottom: 12px;">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <strong>📍 {j_id} - {issue}</strong>
-                    <span style="font-size: 0.8rem; background: #1e293b; padding: 2px 8px; border-radius: 4px; color: #94a3b8;">{sev_badge}</span>
+                    <strong style="color:#ffffff; font-family:'Space Grotesk', sans-serif;">{j_id} - {issue}</strong>
+                    {sev_badge}
                 </div>
-                <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 4px;">Reporter: {rep_by} | {ts}</div>
-                <div style="font-size: 0.9rem; color: #cbd5e1; margin-top: 6px;">{desc}</div>
+                <div style="font-size: 0.76rem; color: #94a3b8; margin-top: 4px; font-family:'JetBrains Mono', monospace;">Reporter: {rep_by} | {ts}</div>
+                <div style="font-size: 0.85rem; color: #cbd5e1; margin-top: 6px; line-height:1.4;">{desc}</div>
             </div>
             """, unsafe_allow_html=True)
             
-            # Render video / image media preview if present
             if m_url:
                 ext = os.path.splitext(m_url.split('?')[0])[1].lower()
                 if ext in [".mp4", ".mov", ".avi", ".webm", ".mkv"]:
-                    st.caption("📹 Video Evidence (Supabase Cloud)")
+                    st.caption("Video Evidence (Cloud Storage)")
                     st.video(m_url)
                 else:
-                    st.image(m_url, caption="Evidence (Supabase Cloud)", use_container_width=True)
+                    st.image(m_url, caption="Evidence (Cloud Storage)", use_container_width=True)
             elif local_path:
                 ext = os.path.splitext(local_path)[1].lower()
                 if ext in [".mp4", ".mov", ".avi", ".webm", ".mkv"]:
-                    st.caption("📹 Video Evidence (Local Storage)")
+                    st.caption("Video Evidence (Local Storage)")
                     st.video(local_path)
                 else:
                     st.image(local_path, caption="Evidence (Local Storage)", use_container_width=True)
     else:
         st.write("No reports submitted yet.")
 
-# ── Tactical Telemetry Footer ──
+# ── Telemetry Footer ──
 render_footer()

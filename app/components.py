@@ -1,12 +1,12 @@
 """
 UI Components and Design System for JunctionGuard AI.
-Implements the Stitch Tactical Vision Interface (Ultra-Dark Command Center):
-  - Deep charcoal #0a0c0e canvas with subtle 24px tactical grid
-  - Glowing safety amber (#f97316) brand, active states, and telemetry
-  - Top HUD navigation bar with operational status, AI inference FPS, and node telemetry
-  - Dashboard Overview subheader with live timestamp and deploy pill
-  - Tactically styled KPI metric cards with status pulses
-  - Color-coded risk badges & animated radar halos
+Minimalist Tactical Vision Command Center:
+  - Deep obsidian #08090d canvas with precision micro-dots & subtle 1px borders
+  - Bespoke vector SVG brand logo and crisp vector icons (zero unicode emojis)
+  - Refined minimalist typography (Plus Jakarta Sans, Space Grotesk, JetBrains Mono)
+  - Top HUD navigation bar with operational status, AI inference telemetry, and live timestamp
+  - Minimalist KPI metric cards with SVG accents and status pulses
+  - Semantic risk badges (LOW / MEDIUM / HIGH) & glowing radar halos
   - Explainable contributing factor progress bars
 """
 
@@ -14,8 +14,61 @@ import streamlit as st
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
+# ── Inline SVG Vector Library (Clean, Scalable, Zero-Dependency) ──
+
+SVG_ICONS = {
+    "shield_logo": """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><circle cx="12" cy="12" r="2.5" fill="#f97316"/><path d="M12 6v3m0 6v3m-6-6h3m6 0h3"/></svg>""",
+    
+    "dashboard": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>""",
+    
+    "map": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>""",
+    
+    "chart": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>""",
+    
+    "video": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>""",
+    
+    "alert": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>""",
+    
+    "pin": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>""",
+    
+    "radar": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="3" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="21"/><line x1="3" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="21" y2="12"/></svg>""",
+    
+    "gps": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>""",
+    
+    "network": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>""",
+    
+    "camera": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>""",
+    
+    "search": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>""",
+    
+    "file_text": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>""",
+    
+    "download": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>""",
+    
+    "cloud": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>""",
+    
+    "users": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>""",
+    
+    "cpu": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>""",
+    
+    "refresh": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>""",
+    
+    "check_circle": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>""",
+
+    "traffic_light": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="3"/><circle cx="12" cy="6" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="18" r="2"/></svg>"""
+}
+
+def get_svg_icon(name: str, color: Optional[str] = None, size: int = 16) -> str:
+    """Returns SVG icon with optional color override and size."""
+    svg = SVG_ICONS.get(name, SVG_ICONS["shield_logo"])
+    if color:
+        svg = svg.replace('stroke="currentColor"', f'stroke="{color}"').replace("stroke='#f97316'", f"stroke='{color}'")
+    if size != 16:
+        svg = svg.replace('width="16"', f'width="{size}"').replace('height="16"', f'height="{size}"')
+    return svg
+
 def get_risk_badge_html(risk_level: Optional[str]) -> str:
-    """Returns the HTML string for a colored risk badge."""
+    """Returns the minimalist HTML string for a colored risk badge."""
     if risk_level is None:
         return '<span class="badge badge-gray"><span class="badge-dot"></span>AWAITING DATA</span>'
     
@@ -34,7 +87,7 @@ def render_risk_badge(risk_level: Optional[str]):
     st.markdown(get_risk_badge_html(risk_level), unsafe_allow_html=True)
 
 def render_contributing_factors(factors: Optional[List[Dict[str, Any]]], junction_id: Optional[str] = None):
-    """Renders contributing factors as labeled progress bars with glowing tactical styling."""
+    """Renders contributing factors as sleek labeled progress bars."""
     if not factors:
         render_awaiting_data_banner()
         return
@@ -52,11 +105,13 @@ def render_contributing_factors(factors: Optional[List[Dict[str, Any]]], junctio
             except Exception:
                 pass
         if not sub_line:
-            sub_line = "Multiple reports in last 30 days driving citizen incident elevation"
+            sub_line = "Multiple verified citizen reports active within last 30 days"
 
         st.markdown(f"""
-        <div style="background: rgba(249, 115, 22, 0.12); border-left: 3px solid #f97316; border-radius: 6px; padding: 8px 14px; margin-bottom: 14px; font-size: 0.82rem; color: #fdba74; display: flex; align-items: center; gap: 8px;">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.82rem; color: #fbbf24; display: flex; align-items: center; gap: 10px;">
+            <div style="display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                {get_svg_icon("alert", color="#f59e0b", size=15)}
+            </div>
             <span><b>Citizen Alert Cluster:</b> {sub_line}</span>
         </div>
         """, unsafe_allow_html=True)
@@ -72,8 +127,8 @@ def render_contributing_factors(factors: Optional[List[Dict[str, Any]]], junctio
             bar_color = "linear-gradient(90deg, #ef4444, #dc2626)"
             text_accent = "#f87171"
         elif pct >= 20:
-            bar_color = "linear-gradient(90deg, #f97316, #ea580c)"
-            text_accent = "#fb923c"
+            bar_color = "linear-gradient(90deg, #f59e0b, #ea580c)"
+            text_accent = "#fbbf24"
         else:
             bar_color = "linear-gradient(90deg, #10b981, #059669)"
             text_accent = "#34d399"
@@ -81,13 +136,13 @@ def render_contributing_factors(factors: Optional[List[Dict[str, Any]]], junctio
         st.markdown(f"""
         <div style="margin-bottom: 12px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                <span style="font-size: 0.88rem; font-weight: 600; color: #e2e8f0;">{factor}</span>
-                <span style="font-size: 0.82rem; font-weight: 700; color: {text_accent}; font-family: 'JetBrains Mono', monospace;">
+                <span style="font-size: 0.85rem; font-weight: 500; color: #cbd5e1;">{factor}</span>
+                <span style="font-size: 0.80rem; font-weight: 700; color: {text_accent}; font-family: 'JetBrains Mono', monospace;">
                     {pct}% Impact
                 </span>
             </div>
-            <div style="background: rgba(18, 20, 24, 0.9); height: 8px; border-radius: 9999px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08);">
-                <div style="width: {pct}%; height: 100%; background: {bar_color}; border-radius: 9999px; transition: width 0.6s ease;"></div>
+            <div style="background: rgba(255, 255, 255, 0.05); height: 6px; border-radius: 9999px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.05);">
+                <div style="width: {pct}%; height: 100%; background: {bar_color}; border-radius: 9999px; transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);"></div>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -95,53 +150,64 @@ def render_contributing_factors(factors: Optional[List[Dict[str, Any]]], junctio
     st.markdown('</div>', unsafe_allow_html=True)
 
 def render_awaiting_data_banner():
-    """Renders the 'Awaiting Data' info banner."""
-    st.markdown("""
-    <div class="awaiting-data-banner">
-        <div class="awaiting-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg>
+    """Renders the minimalist 'Awaiting Data' info banner."""
+    st.markdown(f"""
+    <div class="awaiting-data-banner" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 10px; padding: 16px; display: flex; align-items: center; gap: 14px;">
+        <div style="width: 42px; height: 42px; border-radius: 8px; background: rgba(245, 158, 11, 0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            {get_svg_icon("radar", color="#f59e0b", size=22)}
         </div>
         <div>
-            <div class="awaiting-title">AWAITING TELEMETRY DATA</div>
-            <div class="awaiting-desc">
-                Visual risk analysis and historical accident weighting are currently pending for this junction. 
-                Detailed contributing factor scores will be populated automatically when live streams and database 
-                connectors are active.
+            <div style="font-size: 0.84rem; font-weight: 700; color: #ffffff; letter-spacing: 0.04em; font-family: 'Space Grotesk', sans-serif;">AWAITING TELEMETRY STREAM</div>
+            <div style="font-size: 0.78rem; color: #94a3b8; margin-top: 3px; line-height: 1.4;">
+                Visual risk analysis and historical accident weighting are currently initializing for this node. 
+                Scores and factor attributions populate automatically as camera feeds connect.
             </div>
         </div>
-        <div class="radar-sweep"></div>
     </div>
     """, unsafe_allow_html=True)
 
 def render_navbar(active_page: str = "Dashboard"):
-    """Renders the ultra-dark tactical command center header matching the reference image."""
-    navbar_html = (
-        '<div class="tactical-navbar">'
-        '<div class="navbar-brand-group">'
-        '<div class="brand-shield-logo"></div>'
-        '<div>'
-        '<div class="brand-title">JunctionGuard <span class="brand-ai">AI</span></div>'
-        '<div class="brand-sub">Autonomous Vision Analytics &amp; Road Hazard Intelligence</div>'
-        '</div>'
-        '</div>'
-        '<div class="navbar-status-badges">'
-        '<div class="status-pill status-pill-operational">'
-        '<span class="pill-icon"></span>'
-        '<div class="pill-meta">'
-        '<span class="pill-label">SYSTEM STATUS</span>'
-        '<span class="pill-val" style="color: #10b981;">OPERATIONAL</span>'
-        '</div>'
-        '</div>'
-        '<div class="status-pill status-pill-inference">'
-        '<span class="pill-icon"></span>'
-        '<div class="pill-meta">'
-        '<span class="pill-label">AI INFERENCE</span>'
-        '<span class="pill-val" style="color: #f97316;">28 FPS</span>'
-        '</div>'
-        '</div>'
-        '</div>'
-        '</div>'
-    )
+    """Renders the ultra-minimalist command center HUD navigation bar."""
+    navbar_html = f"""
+    <div class="tactical-navbar">
+        <div class="navbar-brand-group">
+            <div class="brand-shield-logo">
+                {get_svg_icon("shield_logo", size=22)}
+            </div>
+            <div>
+                <div class="brand-title">JunctionGuard <span class="brand-ai">AI</span></div>
+                <div class="brand-sub">Autonomous Vision &amp; Spatial Risk Intelligence</div>
+            </div>
+        </div>
+        <div class="navbar-status-badges">
+            <div class="status-pill">
+                <span class="live-dot-green"></span>
+                <div class="pill-meta">
+                    <span class="pill-label">STATUS</span>
+                    <span class="pill-val" style="color: #10b981;">ACTIVE</span>
+                </div>
+            </div>
+            <div class="status-pill">
+                <div style="display:flex; align-items:center; color:#f97316;">
+                    {get_svg_icon("cpu", color="#f97316", size=14)}
+                </div>
+                <div class="pill-meta">
+                    <span class="pill-label">INFERENCE</span>
+                    <span class="pill-val" style="color: #f97316;">28 FPS</span>
+                </div>
+            </div>
+            <div class="status-pill">
+                <div style="display:flex; align-items:center; color:#38bdf8;">
+                    {get_svg_icon("cloud", color="#38bdf8", size=14)}
+                </div>
+                <div class="pill-meta">
+                    <span class="pill-label">DATABASE</span>
+                    <span class="pill-val" style="color: #38bdf8;">SYNCED</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    """
     st.markdown(navbar_html, unsafe_allow_html=True)
 
 def render_dashboard_overview_header(title: str = "Dashboard", subtitle: str = "Real-time Junction Risk Surveillance System"):
@@ -150,54 +216,60 @@ def render_dashboard_overview_header(title: str = "Dashboard", subtitle: str = "
     date_str = now.strftime("%b %d, %Y")
     time_str = now.strftime("%I:%M:%S %p")
     
-    header_html = (
-        '<div class="overview-header-bar">'
-        '<div>'
-        f'<div class="overview-title">{title}</div>'
-        f'<div class="overview-sub">{subtitle}</div>'
-        '</div>'
-        '<div class="overview-right-actions">'
-        '<div class="datetime-pill">'
-        '<span class="pill-cal-icon"></span>'
-        f'<span>{date_str}</span>'
-        '<span class="dt-divider">|</span>'
-        f'<span class="dt-time">{time_str}</span>'
-        '</div>'
-        '</div>'
-        '</div>'
-    )
+    header_html = f"""
+    <div class="overview-header-bar">
+        <div>
+            <div class="overview-title">{title}</div>
+            <div class="overview-sub">{subtitle}</div>
+        </div>
+        <div class="overview-right-actions">
+            <div class="datetime-pill">
+                <span style="display:flex; align-items:center; color:#94a3b8;">
+                    {get_svg_icon("file_text", color="#94a3b8", size=13)}
+                </span>
+                <span>{date_str}</span>
+                <span class="dt-divider">/</span>
+                <span class="dt-time">{time_str}</span>
+            </div>
+        </div>
+    </div>
+    """
     st.markdown(header_html, unsafe_allow_html=True)
 
 def render_footer():
-    """Renders the bottom status bar matching the reference image."""
-    footer_html = (
-        '<div class="tactical-footer">'
-        '<div class="footer-stat">'
-        '<span class="live-dot-green"></span>'
-        '<span>Data Source: Live Sensors + CCTV + IoT</span>'
-        '</div>'
-        '<div class="footer-stat">'
-        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
-        '<span>AI Model: <b>JunctionGuard v2.1</b></span>'
-        '</div>'
-        '<div class="footer-stat">'
-        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>'
-        '<span>Data Refresh: <b>2 sec ago</b></span>'
-        '</div>'
-        '<div class="footer-stat footer-copyright">'
-        '&copy; 2025 JunctionGuard AI. All Rights Reserved.'
-        '</div>'
-        '</div>'
-    )
+    """Renders the minimalist telemetry status footer."""
+    footer_html = f"""
+    <div class="tactical-footer">
+        <div class="footer-stat">
+            <span class="live-dot-green"></span>
+            <span>Feed: <b>Real-Time Vision &amp; GIS Sensors</b></span>
+        </div>
+        <div class="footer-stat">
+            <span style="display:flex; align-items:center; color:#94a3b8;">
+                {get_svg_icon("cpu", color="#94a3b8", size=13)}
+            </span>
+            <span>Engine: <b>YOLOv8 + ExplainableRisk v2.4</b></span>
+        </div>
+        <div class="footer-stat">
+            <span style="display:flex; align-items:center; color:#94a3b8;">
+                {get_svg_icon("refresh", color="#94a3b8", size=13)}
+            </span>
+            <span>Telemetry Pulse: <b>Active</b></span>
+        </div>
+        <div class="footer-stat footer-copyright">
+            &copy; 2026 JunctionGuard AI &bull; Civic Safety Architecture
+        </div>
+    </div>
+    """
     st.markdown(footer_html, unsafe_allow_html=True)
 
 def inject_custom_styles():
-    """Injects the Stitch Tactical Vision Interface design system."""
+    """Injects the ultra-minimalist dark design system."""
     st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700;800&display=swap');
 
-        /* ── Hide Streamlit 3-dot menu, toolbar, and footer ── */
+        /* ── Clean Up Streamlit Defaults ── */
         #MainMenu { visibility: hidden !important; display: none !important; }
         header[data-testid="stHeader"] { visibility: hidden !important; display: none !important; }
         div[data-testid="stToolbar"] { visibility: hidden !important; display: none !important; }
@@ -205,110 +277,91 @@ def inject_custom_styles():
         footer { visibility: hidden !important; display: none !important; }
         .stDeployButton { visibility: hidden !important; display: none !important; }
 
-        /* ── Ultra-Dark Canvas (#0a0c0e) with Subtle 24px Tactical Grid ── */
+        /* ── Minimalist Obsidian Canvas (#08090d) ── */
         html, body, [class*="css"], .stApp {
-            font-family: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-            background-color: #0a0c0e !important;
-            background-image: 
-                linear-gradient(rgba(249, 115, 22, 0.02) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(249, 115, 22, 0.02) 1px, transparent 1px) !important;
-            background-size: 24px 24px !important;
-            color: #e2e2e5 !important;
-        }
-
-
-        /* ── Confident Technical Typography Hierarchy ── */
-        h1, h2, h3, h4, h5, h6, .brand-title, .overview-title, .card-label, .panel-title {
-            font-family: 'Space Grotesk', system-ui, sans-serif !important;
-            letter-spacing: -0.02em !important;
-        }
-
-        .stApp h1, .stApp h2, .stApp h3, .stApp h4 {
-            color: #f8fafc !important;
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+            background-color: #08090d !important;
+            color: #e2e8f0 !important;
         }
 
         [data-testid="stAppViewContainer"] {
-            background-color: #0a0c0e !important;
+            background-color: #08090d !important;
             background-image: 
-                linear-gradient(rgba(249, 115, 22, 0.02) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(249, 115, 22, 0.02) 1px, transparent 1px) !important;
-            background-size: 24px 24px !important;
+                radial-gradient(circle at 50% 0%, rgba(249, 115, 22, 0.03) 0%, transparent 60%),
+                linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px) !important;
+            background-size: 100% 100%, 32px 32px, 32px 32px !important;
         }
 
-        header[data-testid="stHeader"] {
-            background: rgba(10, 12, 14, 0.95) !important;
-            backdrop-filter: blur(16px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+        /* ── Typography System ── */
+        h1, h2, h3, h4, h5, h6, .brand-title, .overview-title, .panel-title {
+            font-family: 'Space Grotesk', system-ui, sans-serif !important;
+            letter-spacing: -0.02em !important;
+            color: #f8fafc !important;
         }
 
-        /* ── Ultra-Dark Sidebar with Tactical Styling ── */
+        /* ── Minimalist Sidebar ── */
         [data-testid="stSidebar"] {
-            background: #0d0f12 !important;
-            border-right: 1px solid rgba(255, 255, 255, 0.07);
+            background: #0b0e14 !important;
+            border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
         }
         div[data-testid="stSidebar"] div[data-testid="stRadio"] > div {
-            gap: 5px !important;
+            gap: 4px !important;
         }
         div[data-testid="stSidebar"] div[data-testid="stRadio"] label {
-            background: #12151a !important;
-            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            background: rgba(255, 255, 255, 0.02) !important;
+            border: 1px solid rgba(255, 255, 255, 0.05) !important;
             border-radius: 8px !important;
             padding: 9px 12px !important;
-            color: #9ca3af !important;
-            font-family: 'Space Grotesk', sans-serif !important;
-            font-size: 0.84rem !important;
-            font-weight: 600 !important;
+            color: #94a3b8 !important;
+            font-family: 'Plus Jakarta Sans', sans-serif !important;
+            font-size: 0.85rem !important;
+            font-weight: 500 !important;
             cursor: pointer !important;
-            transition: all 0.2s ease !important;
+            transition: all 0.15s ease !important;
             display: flex !important;
             align-items: center !important;
             margin-bottom: 0px !important;
         }
         div[data-testid="stSidebar"] div[data-testid="stRadio"] label:hover {
-            border-color: rgba(249, 115, 22, 0.4) !important;
+            border-color: rgba(249, 115, 22, 0.3) !important;
             color: #ffffff !important;
-            background: #161b22 !important;
+            background: rgba(255, 255, 255, 0.04) !important;
         }
         div[data-testid="stSidebar"] div[data-testid="stRadio"] label:has(input:checked) {
-            background: rgba(249, 115, 22, 0.14) !important;
-            border: 1px solid rgba(249, 115, 22, 0.5) !important;
+            background: rgba(249, 115, 22, 0.12) !important;
+            border: 1px solid rgba(249, 115, 22, 0.45) !important;
             color: #ffedd5 !important;
-            font-weight: 700 !important;
-            box-shadow: 0 0 14px rgba(249, 115, 22, 0.18) !important;
+            font-weight: 600 !important;
         }
         div[data-testid="stSidebar"] div[data-testid="stRadio"] label > div:first-child {
             display: none !important;
         }
 
-        /* ── Tactical Panels & HUD Glass Containers ── */
-        .tactical-panel,
+        /* ── Minimalist Panels & Containers ── */
         [data-testid="stVerticalBlockBorderWrapper"] > div {
-            background: #12151a !important;
-            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            background: #0f131a !important;
+            border: 1px solid rgba(255, 255, 255, 0.06) !important;
             border-radius: 10px !important;
             padding: 16px !important;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
-            position: relative !important;
-            overflow: hidden !important;
-            transition: all 0.2s ease !important;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
+            transition: border-color 0.2s ease !important;
         }
-        .tactical-panel:hover,
         [data-testid="stVerticalBlockBorderWrapper"] > div:hover {
-            border-color: rgba(249, 115, 22, 0.3) !important;
-            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5) !important;
+            border-color: rgba(255, 255, 255, 0.12) !important;
         }
 
-        /* ── Top Tactical Navigation Bar ── */
+        /* ── Top HUD Navigation Bar ── */
         .tactical-navbar {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: #0d0f12;
+            background: #0b0e14;
             border: 1px solid rgba(255, 255, 255, 0.07);
             border-radius: 12px;
-            padding: 10px 20px;
+            padding: 12px 20px;
             margin-bottom: 12px;
-            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
         }
         .navbar-brand-group {
             display: flex;
@@ -316,23 +369,22 @@ def inject_custom_styles():
             gap: 12px;
         }
         .brand-shield-logo {
-            width: 38px;
-            height: 38px;
-            background-color: rgba(249, 115, 22, 0.14) !important;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f97316' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/%3E%3Ccircle cx='12' cy='12' r='2' fill='%23f97316'/%3E%3Cpath d='M12 7v3m0 4v3m-5-5h3m4 0h3'/%3E%3C/svg%3E") !important;
-            background-repeat: no-repeat !important;
-            background-position: center !important;
-            background-size: 22px 22px !important;
-            border: 1px solid rgba(249, 115, 22, 0.4) !important;
-            border-radius: 8px !important;
-            box-shadow: 0 0 14px rgba(249, 115, 22, 0.25) !important;
-            display: inline-block !important;
+            width: 36px;
+            height: 36px;
+            background: rgba(249, 115, 22, 0.1);
+            border: 1px solid rgba(249, 115, 22, 0.3);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 12px rgba(249, 115, 22, 0.15);
         }
         .brand-title {
-            font-size: 1.25rem;
-            font-weight: 800;
+            font-size: 1.18rem;
+            font-weight: 700;
             color: #ffffff;
-            line-height: 1.1;
+            line-height: 1.15;
+            letter-spacing: -0.02em;
         }
         .brand-ai {
             color: #f97316;
@@ -340,145 +392,25 @@ def inject_custom_styles():
         }
         .brand-sub {
             font-size: 0.72rem;
-            color: #9ca3af;
+            color: #94a3b8;
             margin-top: 2px;
-            font-weight: 500;
+            font-weight: 400;
         }
 
         .navbar-status-badges {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             flex-wrap: wrap;
         }
         .status-pill {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            background: #14171d;
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.07);
             border-radius: 8px;
             padding: 5px 12px;
-        }
-        .status-pill-operational .pill-icon {
-            width: 14px;
-            height: 14px;
-            display: inline-block;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2310b981' stroke-width='2.5'%3E%3Cpath d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: center;
-            background-size: 14px 14px;
-        }
-        .status-pill-inference .pill-icon {
-            width: 14px;
-            height: 14px;
-            display: inline-block;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f97316' stroke-width='2.5'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cline x1='12' y1='2' x2='12' y2='5'/%3E%3Cline x1='12' y1='19' x2='12' y2='22'/%3E%3Cline x1='2' y1='12' x2='5' y2='12'/%3E%3Cline x1='19' y1='12' x2='22' y2='12'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: center;
-            background-size: 14px 14px;
-        }
-        .pill-cal-icon {
-            width: 14px;
-            height: 14px;
-            display: inline-block;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'/%3E%3Cline x1='16' y1='2' x2='16' y2='6'/%3E%3Cline x1='8' y1='2' x2='8' y2='6'/%3E%3Cline x1='3' y1='10' x2='21' y2='10'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: center;
-            background-size: 14px 14px;
-        }
-
-        /* ── KPI Icon Backgrounds ── */
-        .kpi-icon-jnc {
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f97316' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Ccircle cx='19' cy='12' r='2'/%3E%3Ccircle cx='5' cy='12' r='2'/%3E%3Ccircle cx='12' cy='19' r='2'/%3E%3Ccircle cx='12' cy='5' r='2'/%3E%3Cline x1='12' y1='15' x2='12' y2='17'/%3E%3Cline x1='12' y1='7' x2='12' y2='9'/%3E%3Cline x1='15' y1='12' x2='17' y2='12'/%3E%3Cline x1='7' y1='12' x2='9' y2='12'/%3E%3C/svg%3E") !important;
-            background-repeat: no-repeat !important;
-            background-position: center !important;
-            background-size: 20px 20px !important;
-        }
-        .kpi-icon-alert {
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ef4444' stroke-width='2'%3E%3Cpath d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/%3E%3Cline x1='12' y1='9' x2='12' y2='13'/%3E%3Cline x1='12' y1='17' x2='12.01' y2='17'/%3E%3C/svg%3E") !important;
-            background-repeat: no-repeat !important;
-            background-position: center !important;
-            background-size: 20px 20px !important;
-        }
-        .kpi-icon-score {
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f59e0b' stroke-width='2'%3E%3Cpolyline points='22 12 18 12 15 21 9 3 6 12 2 12'/%3E%3C/svg%3E") !important;
-            background-repeat: no-repeat !important;
-            background-position: center !important;
-            background-size: 20px 20px !important;
-        }
-        .kpi-icon-reports {
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2310b981' stroke-width='2'%3E%3Cpath d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='9' cy='7' r='4'/%3E%3Cpath d='M23 21v-2a4 4 0 0 0-3-3.87'/%3E%3Cpath d='M16 3.13a4 4 0 0 1 0 7.75'/%3E%3C/svg%3E") !important;
-            background-repeat: no-repeat !important;
-            background-position: center !important;
-            background-size: 20px 20px !important;
-        }
-
-        /* ── Junction Map Heat Effect ── */
-        .leaflet-marker-icon.junction-heat-icon {
-            background: transparent !important;
-            border: none !important;
-        }
-        .heat-aura-high {
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            background: radial-gradient(circle, #ef4444 20%, rgba(239, 68, 68, 0.65) 50%, rgba(239, 68, 68, 0.15) 80%, transparent 100%);
-            box-shadow: 0 0 16px #ef4444, 0 0 32px rgba(239, 68, 68, 0.6);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            animation: heat-glow-pulse 2s infinite ease-in-out;
-        }
-        .heat-aura-high::after {
-            content: '';
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #ffffff;
-            box-shadow: 0 0 8px #ef4444;
-        }
-        .heat-aura-med {
-            width: 26px;
-            height: 26px;
-            border-radius: 50%;
-            background: radial-gradient(circle, #f59e0b 20%, rgba(245, 158, 11, 0.65) 50%, rgba(245, 158, 11, 0.15) 80%, transparent 100%);
-            box-shadow: 0 0 14px #f59e0b, 0 0 28px rgba(245, 158, 11, 0.55);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            animation: heat-glow-pulse 2.4s infinite ease-in-out;
-        }
-        .heat-aura-med::after {
-            content: '';
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #ffffff;
-            box-shadow: 0 0 6px #f59e0b;
-        }
-        .heat-aura-low {
-            width: 22px;
-            height: 22px;
-            border-radius: 50%;
-            background: radial-gradient(circle, #10b981 20%, rgba(16, 185, 129, 0.65) 50%, rgba(16, 185, 129, 0.15) 80%, transparent 100%);
-            box-shadow: 0 0 10px #10b981, 0 0 20px rgba(16, 185, 129, 0.45);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .heat-aura-low::after {
-            content: '';
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: #ffffff;
-            box-shadow: 0 0 4px #10b981;
-        }
-        @keyframes heat-glow-pulse {
-            0% { transform: scale(0.9); opacity: 0.85; }
-            50% { transform: scale(1.25); opacity: 1; }
-            100% { transform: scale(0.9); opacity: 0.85; }
         }
         .pill-meta {
             display: flex;
@@ -486,74 +418,18 @@ def inject_custom_styles():
             line-height: 1.1;
         }
         .pill-label {
-            font-size: 0.58rem;
-            font-weight: 700;
-            color: #6b7280;
+            font-size: 0.56rem;
+            font-weight: 600;
+            color: #64748b;
             text-transform: uppercase;
             letter-spacing: 0.06em;
             font-family: 'JetBrains Mono', monospace;
         }
         .pill-val {
             font-size: 0.72rem;
-            font-weight: 800;
-            letter-spacing: 0.04em;
+            font-weight: 700;
+            letter-spacing: 0.02em;
             font-family: 'JetBrains Mono', monospace;
-        }
-
-        .navbar-actions {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .action-icon-wrap {
-            position: relative;
-            width: 34px;
-            height: 34px;
-            border-radius: 8px;
-            background: #14171d;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        .action-icon-wrap:hover {
-            border-color: rgba(249, 115, 22, 0.4);
-            color: #f97316;
-        }
-        .notification-badge {
-            position: absolute;
-            top: -3px;
-            right: -3px;
-            background: #f97316;
-            color: #0a0c0e;
-            font-size: 0.60rem;
-            font-weight: 800;
-            width: 15px;
-            height: 15px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: 'JetBrains Mono', monospace;
-        }
-        .user-avatar {
-            width: 34px;
-            height: 34px;
-            border-radius: 50%;
-            background: #14171d;
-            border: 2px solid #f97316;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-        }
-        .avatar-inner {
-            width: 26px;
-            height: 26px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
         }
 
         /* ── Subheader Overview Bar ── */
@@ -561,67 +437,49 @@ def inject_custom_styles():
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin: 12px 0 16px 0;
-            padding-bottom: 4px;
+            margin: 10px 0 16px 0;
+            padding-bottom: 2px;
         }
         .overview-title {
-            font-size: 1.55rem;
-            font-weight: 800;
+            font-size: 1.45rem;
+            font-weight: 700;
             color: #ffffff;
             line-height: 1.1;
         }
         .overview-sub {
             font-size: 0.80rem;
-            color: #9ca3af;
+            color: #94a3b8;
             margin-top: 3px;
         }
         .overview-right-actions {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
         }
         .datetime-pill {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            background: #12151a;
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: #0f131a;
+            border: 1px solid rgba(255, 255, 255, 0.07);
             border-radius: 8px;
-            padding: 7px 14px;
+            padding: 6px 14px;
             font-size: 0.76rem;
             font-family: 'JetBrains Mono', monospace;
-            color: #d1d5db;
+            color: #cbd5e1;
         }
         .dt-divider {
-            color: #4b5563;
+            color: #475569;
         }
         .dt-time {
             color: #f97316;
-            font-weight: 700;
-        }
-        .deploy-pill-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            background: #12151a;
-            border: 1px solid #f97316;
-            border-radius: 8px;
-            padding: 7px 16px;
-            font-size: 0.78rem;
-            font-weight: 700;
-            color: #f97316;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        .deploy-pill-btn:hover {
-            background: #f97316;
-            color: #0a0c0e;
+            font-weight: 600;
         }
 
-        /* ── Top 4 KPI Cards Matching Reference Image ── */
+        /* ── Minimalist KPI Cards ── */
         .kpi-tactical-card {
-            background: #12151a;
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: #0f131a;
+            border: 1px solid rgba(255, 255, 255, 0.07);
             border-radius: 10px;
             padding: 16px 18px;
             position: relative;
@@ -629,42 +487,42 @@ def inject_custom_styles():
             display: flex;
             align-items: center;
             justify-content: space-between;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
             transition: all 0.2s ease;
         }
         .kpi-tactical-card:hover {
-            border-color: rgba(249, 115, 22, 0.4);
+            border-color: rgba(255, 255, 255, 0.15);
             transform: translateY(-1px);
         }
         .kpi-card-critical {
-            border-color: rgba(239, 68, 68, 0.35) !important;
-            background: linear-gradient(180deg, rgba(239, 68, 68, 0.06) 0%, #12151a 100%) !important;
+            border-color: rgba(239, 68, 68, 0.25) !important;
+            background: linear-gradient(180deg, rgba(239, 68, 68, 0.05) 0%, #0f131a 100%) !important;
         }
         .kpi-label {
-            font-size: 0.68rem;
-            font-weight: 700;
-            color: #9ca3af;
+            font-size: 0.66rem;
+            font-weight: 600;
+            color: #94a3b8;
             text-transform: uppercase;
-            letter-spacing: 0.07em;
+            letter-spacing: 0.06em;
             font-family: 'JetBrains Mono', monospace;
             margin-bottom: 4px;
         }
         .kpi-num {
-            font-size: 1.95rem;
-            font-weight: 800;
+            font-size: 1.85rem;
+            font-weight: 700;
             color: #ffffff;
             line-height: 1.1;
             font-family: 'Space Grotesk', sans-serif;
         }
         .kpi-denom {
             font-size: 0.85rem;
-            color: #6b7280;
-            font-weight: 500;
+            color: #64748b;
+            font-weight: 400;
         }
         .kpi-sub {
             font-size: 0.68rem;
-            font-weight: 700;
-            letter-spacing: 0.05em;
+            font-weight: 600;
+            letter-spacing: 0.04em;
             font-family: 'JetBrains Mono', monospace;
             margin-top: 6px;
             display: flex;
@@ -672,9 +530,9 @@ def inject_custom_styles():
             gap: 5px;
         }
         .kpi-icon-wrap {
-            width: 44px;
-            height: 44px;
-            border-radius: 10px;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -700,192 +558,112 @@ def inject_custom_styles():
             animation: pulseCritical 1.8s infinite;
         }
         @keyframes pulseCritical {
-            0%   { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-            70%  { transform: scale(1);    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+            0%   { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); }
+            70%  { transform: scale(1);    box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
             100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
 
-        /* ── Navigation Tabs Command Deck ── */
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 8px;
-            background: #0d0f12 !important;
-            padding: 6px 8px;
-            border-radius: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
-            margin-bottom: 12px;
-        }
-        .stTabs [data-baseweb="tab"] {
-            border-radius: 8px;
-            padding: 8px 18px;
-            font-family: 'Space Grotesk', system-ui, sans-serif;
-            font-weight: 600;
-            font-size: 0.86rem;
-            color: #9ca3af;
-            border: 1px solid transparent;
-            background: transparent;
-            transition: all 0.2s ease;
-        }
-        .stTabs [data-baseweb="tab"]:hover {
-            color: #ffffff;
-            background: rgba(255, 255, 255, 0.04);
-        }
-        .stTabs [aria-selected="true"] {
-            background: rgba(249, 115, 22, 0.15) !important;
-            color: #ffedd5 !important;
-            border: 1px solid rgba(249, 115, 22, 0.5) !important;
-            box-shadow: 0 0 14px rgba(249, 115, 22, 0.2) !important;
-        }
-
-        /* ── Map Container Anti-Flicker & Dark Mode Integration ── */
-        iframe[title*="st_folium"], .stFolium iframe, [data-testid="stCustomComponentV1"], .stFolium {
-            background-color: #0a0c0e !important;
-            border-radius: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            filter: none !important;
-            -webkit-filter: none !important;
-            transition: none !important;
-        }
-        .leaflet-container, .leaflet-pane, .leaflet-tile-pane, .leaflet-tile {
-            filter: none !important;
-            -webkit-filter: none !important;
-            transition: none !important;
-            opacity: 1 !important;
-        }
-        .leaflet-tile-container img {
-            filter: none !important;
-            -webkit-filter: none !important;
-            transition: none !important;
-            opacity: 1 !important;
-        }
-        .leaflet-container:hover, .leaflet-tile:hover, .stFolium:hover, iframe:hover {
-            filter: none !important;
-            -webkit-filter: none !important;
-            opacity: 1 !important;
-        }
-
-        /* ── Distinct Placeholder Styling ── */
-        input::placeholder, textarea::placeholder,
-        [data-baseweb="input"] input::placeholder,
-        [data-baseweb="textarea"] textarea::placeholder,
-        .stTextInput input::placeholder,
-        .stTextArea textarea::placeholder {
-            color: rgba(156, 163, 175, 0.40) !important;
-            -webkit-text-fill-color: rgba(156, 163, 175, 0.40) !important;
-            font-style: italic !important;
-            font-weight: 400 !important;
-            font-size: 0.86rem !important;
-            opacity: 1 !important;
-        }
-
-        /* ── Segmented Control Filter Chips with True Risk Colors ── */
-        [data-baseweb="tag"] {
-            border-radius: 6px !important;
-            font-family: 'JetBrains Mono', monospace !important;
-            font-weight: 700 !important;
-            font-size: 0.76rem !important;
-            letter-spacing: 0.04em !important;
-            padding: 4px 10px !important;
-            transition: all 0.2s ease !important;
-        }
-        [data-baseweb="tag"]:has([title*="HIGH"]), [data-baseweb="tag"]:has(span:contains("HIGH")) {
-            background: rgba(239, 68, 68, 0.20) !important;
-            border: 1px solid rgba(239, 68, 68, 0.6) !important;
-            color: #f87171 !important;
-            box-shadow: 0 0 10px rgba(239, 68, 68, 0.2) !important;
-        }
-        [data-baseweb="tag"]:has([title*="HIGH"]) svg, [data-baseweb="tag"]:has(span:contains("HIGH")) svg {
-            fill: #f87171 !important;
-        }
-        [data-baseweb="tag"]:has([title*="MEDIUM"]), [data-baseweb="tag"]:has(span:contains("MEDIUM")) {
-            background: rgba(245, 158, 11, 0.20) !important;
-            border: 1px solid rgba(245, 158, 11, 0.6) !important;
-            color: #fbbf24 !important;
-            box-shadow: 0 0 10px rgba(245, 158, 11, 0.2) !important;
-        }
-        [data-baseweb="tag"]:has([title*="MEDIUM"]) svg, [data-baseweb="tag"]:has(span:contains("MEDIUM")) svg {
-            fill: #fbbf24 !important;
-        }
-        [data-baseweb="tag"]:has([title*="LOW"]), [data-baseweb="tag"]:has(span:contains("LOW")) {
-            background: rgba(16, 185, 129, 0.20) !important;
-            border: 1px solid rgba(16, 185, 129, 0.6) !important;
-            color: #34d399 !important;
-            box-shadow: 0 0 10px rgba(16, 185, 129, 0.2) !important;
-        }
-        [data-baseweb="tag"]:has([title*="LOW"]) svg, [data-baseweb="tag"]:has(span:contains("LOW")) svg {
-            fill: #34d399 !important;
-        }
-
-        /* ── Reserved Risk Badges (LOW / MEDIUM / HIGH ONLY) ── */
+        /* ── Reserved Minimalist Badges ── */
         .badge {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 4px 12px;
+            padding: 4px 10px;
             border-radius: 6px;
-            font-size: 0.74rem;
-            font-weight: 700;
+            font-size: 0.72rem;
+            font-weight: 600;
             font-family: 'JetBrains Mono', monospace;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.04em;
         }
         .badge-dot {
-            width: 6px;
-            height: 6px;
+            width: 5px;
+            height: 5px;
             border-radius: 50%;
             background: currentColor;
         }
         .badge-green {
-            background: rgba(16, 185, 129, 0.15);
+            background: rgba(16, 185, 129, 0.12);
             color: #34d399;
-            border: 1px solid rgba(16, 185, 129, 0.35);
+            border: 1px solid rgba(16, 185, 129, 0.25);
         }
         .badge-amber {
-            background: rgba(245, 158, 11, 0.15);
+            background: rgba(245, 158, 11, 0.12);
             color: #fbbf24;
-            border: 1px solid rgba(245, 158, 11, 0.35);
+            border: 1px solid rgba(245, 158, 11, 0.25);
         }
         .badge-red {
-            background: rgba(239, 68, 68, 0.18);
+            background: rgba(239, 68, 68, 0.12);
             color: #f87171;
-            border: 1px solid rgba(239, 68, 68, 0.45);
+            border: 1px solid rgba(239, 68, 68, 0.3);
         }
         .badge-gray {
-            background: rgba(100, 116, 139, 0.15);
+            background: rgba(100, 116, 139, 0.12);
             color: #94a3b8;
-            border: 1px solid rgba(100, 116, 139, 0.3);
+            border: 1px solid rgba(100, 116, 139, 0.2);
         }
 
-        /* ── Tactical Action Buttons ── */
+        /* ── Action Buttons ── */
         .stButton > button {
-            background: #14171d !important;
-            color: #ffffff !important;
-            border: 1px solid rgba(255, 255, 255, 0.12) !important;
+            background: #121722 !important;
+            color: #f8fafc !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
             border-radius: 8px !important;
-            font-family: 'Space Grotesk', sans-serif !important;
+            font-family: 'Plus Jakarta Sans', sans-serif !important;
             font-weight: 600 !important;
-            font-size: 0.86rem !important;
-            padding: 8px 18px !important;
-            transition: all 0.2s ease !important;
+            font-size: 0.84rem !important;
+            padding: 7px 16px !important;
+            transition: all 0.15s ease !important;
         }
         .stButton > button:hover {
-            background: #1e222a !important;
-            border-color: #f97316 !important;
+            background: #182030 !important;
+            border-color: rgba(249, 115, 22, 0.4) !important;
             color: #f97316 !important;
-            transform: translateY(-1px) !important;
+        }
+        .stButton > button[kind="primary"] {
+            background: #f97316 !important;
+            color: #08090d !important;
+            border: 1px solid #f97316 !important;
+            font-weight: 700 !important;
+        }
+        .stButton > button[kind="primary"]:hover {
+            background: #ea580c !important;
+            color: #ffffff !important;
         }
 
-        /* ── Tactical Footer ── */
+        /* ── Input Fields & Selectboxes ── */
+        [data-baseweb="input"], [data-baseweb="textarea"], [data-baseweb="select"] {
+            background-color: #0b0e14 !important;
+            border-color: rgba(255, 255, 255, 0.08) !important;
+            border-radius: 8px !important;
+        }
+        input, textarea {
+            color: #f8fafc !important;
+            font-family: 'Plus Jakarta Sans', sans-serif !important;
+        }
+        input::placeholder, textarea::placeholder {
+            color: rgba(148, 163, 184, 0.4) !important;
+            font-size: 0.84rem !important;
+        }
+
+        /* ── Minimalist Table Styling ── */
+        [data-testid="stDataFrame"] {
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        /* ── Telemetry Footer ── */
         .tactical-footer {
             display: flex;
             justify-content: space-between;
             align-items: center;
             padding: 14px 20px;
-            background: #0d0f12;
-            border: 1px solid rgba(255, 255, 255, 0.07);
+            background: #0b0e14;
+            border: 1px solid rgba(255, 255, 255, 0.06);
             border-radius: 10px;
             margin-top: 2rem;
             font-size: 0.74rem;
-            color: #9ca3af;
+            color: #94a3b8;
             flex-wrap: wrap;
             gap: 12px;
         }
@@ -896,13 +674,13 @@ def inject_custom_styles():
             font-family: 'JetBrains Mono', monospace;
         }
         .footer-copyright {
-            color: #6b7280;
+            color: #64748b;
         }
 
         /* ── Custom Scrollbars ── */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #0a0c0e; }
-        ::-webkit-scrollbar-thumb { background: #1f242d; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #374151; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: #08090d; }
+        ::-webkit-scrollbar-thumb { background: #1a202c; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #2d3748; }
     </style>
     """, unsafe_allow_html=True)

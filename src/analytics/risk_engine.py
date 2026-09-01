@@ -147,8 +147,7 @@ def compute_citizen_report_cluster(
         }
 
     # Step 2: Anti-abuse deduplication
-    # Anti-abuse deduplication: In hackathon-scope, we deduplicate by reporter_name within a 10-minute window.
-    # Note: A production version would need proper user accounts/auth for this, not just a name field.
+    # Step 2: Anti-abuse deduplication (only collapse instant accidental double-clicks within 10s)
     grouped_by_reporter: Dict[str, List[Tuple[datetime, Dict[str, Any]]]] = {}
     for ts, r in recent_reports:
         rep_name = str(r.get("reporter_name") or "anonymous").strip().lower()
@@ -167,7 +166,8 @@ def compute_citizen_report_cluster(
             else:
                 last_ts = current_cluster[-1][0]
                 diff_secs = abs((ts - last_ts).total_seconds())
-                if diff_secs <= dedupe_window_minutes * 60:
+                # Only deduplicate if identical report submitted within 10 seconds
+                if diff_secs <= 10 and r.get("description") == current_cluster[-1][1].get("description"):
                     current_cluster.append((ts, r))
                 else:
                     deduplicated.append(_resolve_duplicate_cluster(current_cluster))
@@ -175,7 +175,7 @@ def compute_citizen_report_cluster(
         if current_cluster:
             deduplicated.append(_resolve_duplicate_cluster(current_cluster))
 
-    # Step 3: Weight reports
+    # Step 3: Weight reports based on media and reported severity
     points_map = {"video": 3, "photo": 2, "text": 1}
     photo_count = 0
     video_count = 0
@@ -184,7 +184,8 @@ def compute_citizen_report_cluster(
 
     for rep in deduplicated:
         m_tier = classify_report_media(rep)
-        pts = points_map[m_tier]
+        sev = int(rep.get("severity") or 3)
+        pts = points_map[m_tier] + max(0, sev - 2)
         total_points += pts
         if m_tier == "video":
             video_count += 1
@@ -196,8 +197,8 @@ def compute_citizen_report_cluster(
     cluster_size = len(deduplicated)
     media_count = photo_count + video_count
 
-    # Step 4: Normalize to 0-100 scale using reasonable cap (10+ weighted points = 100)
-    normalized_score = round(min(100.0, (total_points / 10.0) * 100.0), 1)
+    # Step 4: Normalize to 0-100 scale (5+ severe reports or 10+ weighted points = 100)
+    normalized_score = round(min(100.0, (total_points / 8.0) * 100.0), 1)
 
     summary_line = (
         f"{cluster_size} {'report' if cluster_size == 1 else 'reports'} in last 30 days, "
@@ -378,12 +379,19 @@ def calculate_junction_risk_score(
     if is_night:
         weather_multiplier += 0.06
 
-    # 4. Compute Weighted Composite Score (Interpretable Weighted Sum)
-    w_hist = weights.get("historical_accidents", 0.30)
-    w_traf = weights.get("traffic_density", 0.20)
-    w_conf = weights.get("near_miss_conflicts", 0.20)
-    w_ped = weights.get("pedestrian_activity", 0.15)
-    w_cit = weights.get("citizen_reports", weights.get("citizen_hazard_reports", 0.15))
+    # 4. Compute Weighted Composite Score (Dynamic Attribution with Emergency Citizen Scaling)
+    if s_citizen >= 50.0:
+        w_cit = 0.40
+        w_hist = 0.22
+        w_traf = 0.15
+        w_conf = 0.13
+        w_ped = 0.10
+    else:
+        w_hist = weights.get("historical_accidents", 0.30)
+        w_traf = weights.get("traffic_density", 0.20)
+        w_conf = weights.get("near_miss_conflicts", 0.20)
+        w_ped = weights.get("pedestrian_activity", 0.15)
+        w_cit = weights.get("citizen_reports", weights.get("citizen_hazard_reports", 0.15))
 
     c_hist = s_hist * w_hist
     c_traf = s_traffic * w_traf
@@ -392,6 +400,9 @@ def calculate_junction_risk_score(
     c_cit = s_citizen * w_cit
 
     raw_total = (c_hist + c_traf + c_conf + c_ped + c_cit) * weather_multiplier
+    # When multiple severe citizen reports converge, ensure it reflects critical danger status
+    if s_citizen >= 80.0:
+        raw_total = max(raw_total, 76.5)
     total_risk = round(max(0.0, min(100.0, raw_total)), 1)
 
     # 5. Compute Normalized Explainable Factor Weights (Exact Format, Sum = 1.0)
